@@ -245,13 +245,35 @@ def stripe_checkout(request, order_id):
 
 def payment_success(request, order_id):
     order = Order.objects.get(pk=order_id)
-    order.is_paid = True
-    order.status = "paid"
-    order.paid_at = timezone.now()
-    order.save(update_fields=["is_paid", "status", "paid_at"])
-    request.session["cart"] = {}
-    request.session.modified = True
-    messages.success(request, "Płatność została przyjęta. Zamówienie jest opłacone.")
+    session_id = request.GET.get("session_id")
+
+    # Never trust the redirect alone: verify the checkout session with Stripe
+    # before marking the order as paid. The webhook is the source of truth,
+    # but this lets us reflect the paid state immediately for the user too.
+    if not order.is_paid and session_id and settings.STRIPE_SECRET_KEY:
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+        except stripe.error.StripeError:
+            session = None
+
+        if (
+            session
+            and session.get("id") == order.stripe_checkout_session_id
+            and session.get("metadata", {}).get("order_id") == str(order.id)
+            and session.get("payment_status") == "paid"
+        ):
+            order.is_paid = True
+            order.status = "paid"
+            order.paid_at = timezone.now()
+            order.stripe_payment_intent_id = session.get("payment_intent", "") or order.stripe_payment_intent_id
+            order.save(update_fields=["is_paid", "status", "paid_at", "stripe_payment_intent_id"])
+            request.session["cart"] = {}
+            request.session.modified = True
+
+    if order.is_paid:
+        messages.success(request, "Płatność została przyjęta. Zamówienie jest opłacone.")
+    else:
+        messages.info(request, "Oczekujemy na potwierdzenie płatności. Sprawdź status zamówienia za chwilę.")
     return redirect("shop:checkout_success", order_id=order.pk)
 
 

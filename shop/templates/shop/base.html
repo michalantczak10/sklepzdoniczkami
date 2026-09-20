@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Sklep internetowy{% endblock %}</title>
+    <title>{% block title %}Sklep z Doniczkami{% endblock %}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -70,7 +70,7 @@
 <body>
     <header class="topbar">
         <div class="container nav">
-            <div class="brand"><a href="{% url 'shop:home' %}">Sklep internetowy</a></div>
+            <div class="brand"><a href="{% url 'shop:home' %}">Sklep z Doniczkami</a></div>
             <nav class="nav-links">
                 <a href="{% url 'shop:home' %}">Strona główna</a>
                 {% for category in categories %}
