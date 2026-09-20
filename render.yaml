@@ -3,7 +3,7 @@ services:
     name: sklep-internetowy
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SECRET_KEY
@@ -11,7 +11,11 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: "*"
+        value: "antczak.com.pl,www.antczak.com.pl,sklep.antczak.com.pl,.onrender.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://antczak.com.pl,https://www.antczak.com.pl,https://sklep.antczak.com.pl"
+      - key: SITE_NAME
+        value: "Sklep z Doniczkami"
       - key: DATABASE_URL
         fromDatabase:
           name: sklepdb
