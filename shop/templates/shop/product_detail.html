@@ -1,0 +1,37 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}{{ product.name }}{% endblock %}
+
+{% block content %}
+    <div class="product-detail">
+        <div class="card">
+            <div class="badge">{{ product.category.name }}</div>
+            <h1>{{ product.name }}</h1>
+            <p>{{ product.description }}</p>
+        </div>
+        <aside class="card">
+            <div class="price">{{ product.price }} zł</div>
+            <div class="meta">Stan magazynowy: {{ product.stock }}</div>
+            <div class="meta">Kategoria: {{ product.category.name }}</div>
+            <div class="meta"><a href="{{ product.category.get_absolute_url }}">Zobacz podobne produkty</a></div>
+            <div class="actions">
+                <form method="post" action="{% url 'shop:add_to_cart' product.id %}">
+                    {% csrf_token %}
+                    <button class="btn" type="submit">Dodaj do koszyka</button>
+                </form>
+            </div>
+        </aside>
+    </div>
+
+    {% if related_products %}
+        <h2 class="section-title">Podobne produkty</h2>
+        <div class="grid">
+            {% for item in related_products %}
+                <article class="card product-card">
+                    <h3><a href="{{ item.get_absolute_url }}">{{ item.name }}</a></h3>
+                    <div class="price">{{ item.price }} zł</div>
+                </article>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

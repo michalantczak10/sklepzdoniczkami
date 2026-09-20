@@ -1,0 +1,17 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}Rejestracja{% endblock %}
+
+{% block content %}
+    <h1>Utwórz konto</h1>
+    <div class="card" style="max-width: 420px;">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="actions">
+                <button class="btn" type="submit">Zarejestruj</button>
+            </div>
+        </form>
+        <p>Masz już konto? <a href="{% url 'shop:login' %}">Zaloguj się</a></p>
+    </div>
+{% endblock %}

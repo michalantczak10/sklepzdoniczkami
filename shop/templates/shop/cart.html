@@ -1,0 +1,40 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}Koszyk{% endblock %}
+
+{% block content %}
+    <h1>Koszyk</h1>
+
+    {% if items %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Produkt</th>
+                    <th>Ilość</th>
+                    <th>Cena</th>
+                    <th>Razem</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                    <tr>
+                        <td><a href="{{ item.product.get_absolute_url }}">{{ item.product.name }}</a></td>
+                        <td>{{ item.quantity }}</td>
+                        <td>{{ item.product.price }} zł</td>
+                        <td>{{ item.line_total }} zł</td>
+                        <td><a href="{% url 'shop:remove_from_cart' item.product.id %}">Usuń</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="actions">
+            <div class="price">Suma: {{ total }} zł</div>
+            <a class="btn" href="{% url 'shop:checkout' %}">Przejdź do zamówienia</a>
+        </div>
+    {% else %}
+        <p>Twój koszyk jest pusty.</p>
+        <a class="btn" href="{% url 'shop:home' %}">Wróć do sklepu</a>
+    {% endif %}
+{% endblock %}
