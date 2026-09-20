@@ -1,0 +1,16 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}Potwierdzenie zamówienia{% endblock %}
+
+{% block content %}
+    <h1>Potwierdzenie zamówienia</h1>
+
+    <div class="card">
+        <p>Dziękujemy! Zamówienie nr <strong>#{{ order.pk }}</strong> zostało złożone.</p>
+        <p>Status: {{ order.get_status_display }}</p>
+        <p>Metoda płatności: {{ order.get_payment_method_display }}</p>
+        <p>Metoda dostawy: {{ order.get_shipping_method_display }}</p>
+        <p>Łączna kwota: <strong>{{ order.total }} zł</strong></p>
+        <a class="btn" href="{% url 'shop:home' %}">Wróć do sklepu</a>
+    </div>
+{% endblock %}

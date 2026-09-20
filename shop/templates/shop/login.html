@@ -1,0 +1,17 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}Logowanie{% endblock %}
+
+{% block content %}
+    <h1>Zaloguj się</h1>
+    <div class="card" style="max-width: 420px;">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="actions">
+                <button class="btn" type="submit">Zaloguj</button>
+            </div>
+        </form>
+        <p>Nie masz konta? <a href="{% url 'shop:register' %}">Zarejestruj się</a></p>
+    </div>
+{% endblock %}

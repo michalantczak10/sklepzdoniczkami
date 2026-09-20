@@ -1,0 +1,35 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}Mój profil{% endblock %}
+
+{% block content %}
+    <h1>Witaj, {{ user.username }}!</h1>
+
+    <div class="card">
+        <h2>Historia zamówień</h2>
+        {% if orders %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nr zamówienia</th>
+                        <th>Data</th>
+                        <th>Status</th>
+                        <th>Kwota</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                        <tr>
+                            <td>#{{ order.pk }}</td>
+                            <td>{{ order.created_at|date:'Y-m-d H:i' }}</td>
+                            <td>{{ order.get_status_display }}</td>
+                            <td>{{ order.total }} zł</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Brak zamówień.</p>
+        {% endif %}
+    </div>
+{% endblock %}
