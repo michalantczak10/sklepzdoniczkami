@@ -11,9 +11,9 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: "sklepzdoniczkami.pl"
+        value: "sklepzdoniczkami.pl,sklepzdoniczkami.onrender.com"
       - key: CSRF_TRUSTED_ORIGINS
-        value: "https://sklepzdoniczkami.pl"
+        value: "https://sklepzdoniczkami.pl,https://sklepzdoniczkami.onrender.com"
       - key: SITE_NAME
         value: "Sklepzdoniczkami"
       - key: DATABASE_URL
