@@ -34,7 +34,7 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS', 'http://localhost,https://localhost'
 ).split(',')
 
-SITE_NAME = os.environ.get('SITE_NAME', 'Sklep z Doniczkami')
+SITE_NAME = os.environ.get('SITE_NAME', 'Sklepzdoniczkami')
 
 # When running behind Render's proxy, requests arrive over HTTP internally but
 # were made over HTTPS by the client. This header tells Django to trust that.
@@ -155,4 +155,4 @@ EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@antczak.com.pl')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@sklepzdoniczkami.pl')
