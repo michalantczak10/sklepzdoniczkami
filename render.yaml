@@ -29,6 +29,6 @@ services:
 
 databases:
   - name: sklepzdoniczkami
-    databaseName: sklepzdoniczkami_ho0w
+    databaseName: sklepzdoniczkami
     user: sklepzdoniczkami_user
     plan: free
