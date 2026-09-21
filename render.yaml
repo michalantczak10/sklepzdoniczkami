@@ -16,7 +16,10 @@ services:
         value: "https://sklepzdoniczkami.pl,https://sklepzdoniczkami.onrender.com"
       - key: SITE_NAME
         value: "Sklepzdoniczkami"
-      # Managed manually because the PostgreSQL database was renamed in place.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sklepzdoniczkami
+          property: connectionString
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PUBLIC_KEY
@@ -26,6 +29,6 @@ services:
 
 databases:
   - name: sklepzdoniczkami
-    databaseName: sklepzdoniczkami
+    databaseName: sklepzdoniczkami_otj7
     user: sklepzdoniczkami_user
     plan: free
