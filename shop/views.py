@@ -258,14 +258,14 @@ def payment_success(request, order_id):
 
         if (
             session
-            and session.get("id") == order.stripe_checkout_session_id
-            and session.get("metadata", {}).get("order_id") == str(order.id)
-            and session.get("payment_status") == "paid"
+            and session.id == order.stripe_checkout_session_id
+            and getattr(session.metadata, "order_id", None) == str(order.id)
+            and session.payment_status == "paid"
         ):
             order.is_paid = True
             order.status = "paid"
             order.paid_at = timezone.now()
-            order.stripe_payment_intent_id = session.get("payment_intent", "") or order.stripe_payment_intent_id
+            order.stripe_payment_intent_id = session.payment_intent or order.stripe_payment_intent_id
             order.save(update_fields=["is_paid", "status", "paid_at", "stripe_payment_intent_id"])
             request.session["cart"] = {}
             request.session.modified = True
@@ -299,14 +299,14 @@ def stripe_webhook(request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        order_id = session.get("metadata", {}).get("order_id")
+        order_id = getattr(session.metadata, "order_id", None)
         if order_id:
             order = Order.objects.filter(pk=order_id).first()
             if order:
                 order.is_paid = True
                 order.status = "paid"
                 order.paid_at = timezone.now()
-                order.stripe_payment_intent_id = session.get("payment_intent", "")
+                order.stripe_payment_intent_id = session.payment_intent or ""
                 order.save(update_fields=["is_paid", "status", "paid_at", "stripe_payment_intent_id"])
 
     return HttpResponse(status=200)
