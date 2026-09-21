@@ -6,9 +6,11 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.core import signing
+from django.db import transaction
 from django.db.models import Q
-from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.http import Http404, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -17,6 +19,29 @@ from django.views.generic import DetailView, ListView
 from .models import Category, Order, OrderItem, Product
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+ORDER_ACCESS_SALT = "shop.order-access"
+ORDER_ACCESS_TOKEN_MAX_AGE = 30 * 24 * 60 * 60
+
+
+def make_order_access_token(order):
+    return signing.dumps(order.pk, salt=ORDER_ACCESS_SALT)
+
+
+def get_order_from_access_token(order_token, queryset=None):
+    try:
+        order_id = signing.loads(
+            order_token,
+            salt=ORDER_ACCESS_SALT,
+            max_age=ORDER_ACCESS_TOKEN_MAX_AGE,
+        )
+    except signing.BadSignature as exc:
+        raise Http404 from exc
+
+    if not isinstance(order_id, int):
+        raise Http404
+    if queryset is None:
+        queryset = Order.objects.all()
+    return get_object_or_404(queryset, pk=order_id)
 
 
 def get_cart(request):
@@ -186,13 +211,14 @@ def checkout_view(request):
                     unit_price=item["product"].price,
                 )
 
+            order_token = make_order_access_token(order)
             if payment_method == "card":
                 # Stripe session is created after the order exists.
-                return redirect("shop:stripe_checkout", order_id=order.pk)
+                return redirect("shop:stripe_checkout", order_token=order_token)
 
             request.session["cart"] = {}
             request.session.modified = True
-            return redirect("shop:checkout_success", order_id=order.pk)
+            return redirect("shop:checkout_success", order_token=order_token)
 
     context = {
         "items": items,
@@ -203,10 +229,13 @@ def checkout_view(request):
     return render(request, "shop/checkout.html", context)
 
 
-def stripe_checkout(request, order_id):
-    order = Order.objects.get(pk=order_id)
+def stripe_checkout(request, order_token):
+    order = get_order_from_access_token(order_token)
     if not settings.STRIPE_SECRET_KEY:
         messages.error(request, "Stripe nie jest skonfigurowany. Ustaw STRIPE_SECRET_KEY w środowisku.")
+        return redirect("shop:checkout")
+    if order.payment_method != "card" or order.is_paid or order.status != "pending":
+        messages.error(request, "To zamówienie nie może rozpocząć płatności kartą.")
         return redirect("shop:checkout")
 
     line_items = []
@@ -233,18 +262,23 @@ def stripe_checkout(request, order_id):
         payment_method_types=["card"],
         line_items=line_items,
         mode="payment",
-        success_url=request.build_absolute_uri(reverse("shop:payment_success", args=[order.id])) + "?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url=request.build_absolute_uri(reverse("shop:payment_cancel", args=[order.id])),
+        success_url=request.build_absolute_uri(
+            reverse("shop:payment_success", kwargs={"order_token": order_token})
+        ) + "?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url=request.build_absolute_uri(
+            reverse("shop:payment_cancel", kwargs={"order_token": order_token})
+        ),
         customer_email=order.email,
         metadata={"order_id": str(order.id)},
+        idempotency_key=f"checkout-order-{order.pk}",
     )
     order.stripe_checkout_session_id = session.id
     order.save(update_fields=["stripe_checkout_session_id"])
     return redirect(session.url, permanent=False)
 
 
-def payment_success(request, order_id):
-    order = Order.objects.get(pk=order_id)
+def payment_success(request, order_token):
+    order = get_order_from_access_token(order_token)
     session_id = request.GET.get("session_id")
 
     # Never trust the redirect alone: verify the checkout session with Stripe
@@ -262,25 +296,47 @@ def payment_success(request, order_id):
             and getattr(session.metadata, "order_id", None) == str(order.id)
             and session.payment_status == "paid"
         ):
-            order.is_paid = True
-            order.status = "paid"
-            order.paid_at = timezone.now()
-            order.stripe_payment_intent_id = session.payment_intent or order.stripe_payment_intent_id
-            order.save(update_fields=["is_paid", "status", "paid_at", "stripe_payment_intent_id"])
-            request.session["cart"] = {}
-            request.session.modified = True
+            with transaction.atomic():
+                order = get_order_from_access_token(
+                    order_token,
+                    Order.objects.select_for_update(),
+                )
+                if not order.is_paid:
+                    order.is_paid = True
+                    order.status = "paid"
+                    order.paid_at = timezone.now()
+                    order.stripe_payment_intent_id = (
+                        session.payment_intent or order.stripe_payment_intent_id
+                    )
+                    order.save(
+                        update_fields=[
+                            "is_paid",
+                            "status",
+                            "paid_at",
+                            "stripe_payment_intent_id",
+                        ]
+                    )
+                    request.session["cart"] = {}
+                    request.session.modified = True
+
+    order.refresh_from_db()
 
     if order.is_paid:
         messages.success(request, "Płatność została przyjęta. Zamówienie jest opłacone.")
     else:
         messages.info(request, "Oczekujemy na potwierdzenie płatności. Sprawdź status zamówienia za chwilę.")
-    return redirect("shop:checkout_success", order_id=order.pk)
+    return redirect("shop:checkout_success", order_token=order_token)
 
 
-def payment_cancel(request, order_id):
-    order = Order.objects.get(pk=order_id)
-    order.status = "cancelled"
-    order.save(update_fields=["status"])
+def payment_cancel(request, order_token):
+    with transaction.atomic():
+        order = get_order_from_access_token(
+            order_token,
+            Order.objects.select_for_update(),
+        )
+        if not order.is_paid and order.status == "pending":
+            order.status = "cancelled"
+            order.save(update_fields=["status"])
     messages.warning(request, "Płatność została anulowana. Możesz spróbować ponownie.")
     return redirect("shop:checkout")
 
@@ -299,21 +355,29 @@ def stripe_webhook(request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        order_id = getattr(session.metadata, "order_id", None)
+        order_id = getattr(getattr(session, "metadata", None), "order_id", None)
         if order_id:
-            order = Order.objects.filter(pk=order_id).first()
-            if order:
-                order.is_paid = True
-                order.status = "paid"
-                order.paid_at = timezone.now()
-                order.stripe_payment_intent_id = session.payment_intent or ""
-                order.save(update_fields=["is_paid", "status", "paid_at", "stripe_payment_intent_id"])
+            with transaction.atomic():
+                order = Order.objects.select_for_update().filter(pk=order_id).first()
+                if order and not order.is_paid:
+                    order.is_paid = True
+                    order.status = "paid"
+                    order.paid_at = timezone.now()
+                    order.stripe_payment_intent_id = session.payment_intent or ""
+                    order.save(
+                        update_fields=[
+                            "is_paid",
+                            "status",
+                            "paid_at",
+                            "stripe_payment_intent_id",
+                        ]
+                    )
 
     return HttpResponse(status=200)
 
 
-def checkout_success(request, order_id):
-    order = Order.objects.get(pk=order_id)
+def checkout_success(request, order_token):
+    order = get_order_from_access_token(order_token)
     context = {
         "order": order,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
