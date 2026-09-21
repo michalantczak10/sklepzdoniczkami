@@ -1,4 +1,4 @@
-# Sklep internetowy
+# Sklepzdoniczkami
 
 Prosty sklep internetowy zbudowany w Django. Projekt obejmuje katalog produktów, koszyk, zamówienia, użytkowników, płatności Stripe oraz podstawowe widoki storefrontu.
 
@@ -33,8 +33,8 @@ Prosty sklep internetowy zbudowany w Django. Projekt obejmuje katalog produktów
 1. Sklonuj repozytorium:
 
 ```bash
-git clone https://github.com/michalantczak10/sklep_internetowy.git
-cd sklep_internetowy
+git clone https://github.com/michalantczak10/sklepzdoniczkami.git sklepzdoniczkami
+cd sklepzdoniczkami
 ```
 
 2. Utwórz środowisko wirtualne:
@@ -119,7 +119,7 @@ python manage.py test shop
 ## Struktura projektu
 
 ```text
-sklep_internetowy/
+sklepzdoniczkami/
 ├── config/                 # ustawienia Django i URL
 ├── shop/                   # aplikacja sklepu
 │   ├── migrations/
