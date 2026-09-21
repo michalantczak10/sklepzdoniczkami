@@ -116,6 +116,31 @@ Uruchom testy:
 python manage.py test shop
 ```
 
+`pytest` also runs the Django tests in `shop/`. The browser tests are kept
+separate because they require a locally installed browser; run them with the
+command below.
+
+## Testy E2E
+
+Testy przeglądarkowe używają Playwrighta i osobnej bazy testowej tworzonej przez
+pytest-django na podstawie lokalnej konfiguracji Django.
+
+Zainstaluj zależności developerskie:
+
+```bash
+pip install -r requirements-dev.txt
+playwright install chromium
+```
+
+Uruchom testy E2E:
+
+```bash
+pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
+```
+
+Przy błędzie Playwright zapisuje artefakty diagnostyczne zgodnie z konfiguracją
+uruchomienia. Testy należy wykonywać lokalnie lub na stagingu, nigdy na produkcji.
+
 ## Struktura projektu
 
 ```text
