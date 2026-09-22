@@ -1,26 +1,27 @@
 """One-time maintenance command to migrate internal Django bookkeeping from
 the historical app label "shop" to "sklepzdoniczkami".
 
-IMPORTANT: run this manually against production (e.g. via Render Shell)
-BEFORE deploying the code change that flips AppConfig.label to
-"sklepzdoniczkami". It must run under the code version where the app is
-still registered under the "shop" label, because it only touches raw
-bookkeeping tables (django_migrations, django_content_type) and does not
-rely on the Django app registry at all.
-
-The command is idempotent: running it more than once, or on a database
-that has already been migrated, is a safe no-op.
+This command is safe to run automatically as part of every deploy (it is
+invoked from render.yaml's buildCommand, before `migrate`): it only touches
+raw bookkeeping tables (django_migrations, django_content_type) via plain
+SQL, is idempotent, and no-ops cleanly both when the rename was already
+applied and on a brand-new database where these tables do not exist yet
+(e.g. before the very first `migrate` has ever run).
 """
 
 from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
+
+
+def _table_exists(table_name):
+    return table_name in connection.introspection.table_names()
 
 
 class Command(BaseCommand):
     help = (
         "Renames internal 'shop' bookkeeping (django_migrations.app, "
-        "django_content_type.app_label) to 'sklepzdoniczkami'. Run once, "
-        "manually, before deploying the AppConfig.label change."
+        "django_content_type.app_label) to 'sklepzdoniczkami'. Safe to run "
+        "repeatedly; no-ops once already applied or on a fresh database."
     )
 
     def add_arguments(self, parser):
@@ -33,18 +34,32 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options["dry_run"]
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT app, name FROM django_migrations WHERE app = %s ORDER BY id",
-                ["shop"],
-            )
-            pending_migrations = cursor.fetchall()
+        if not _table_exists("django_migrations") or not _table_exists("django_content_type"):
+            self.stdout.write(self.style.SUCCESS(
+                "Nothing to do: bookkeeping tables do not exist yet "
+                "(fresh database, first migrate hasn't run)."
+            ))
+            return
 
-            cursor.execute(
-                "SELECT id, app_label, model FROM django_content_type WHERE app_label = %s",
-                ["shop"],
-            )
-            pending_content_types = cursor.fetchall()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT app, name FROM django_migrations WHERE app = %s ORDER BY id",
+                    ["shop"],
+                )
+                pending_migrations = cursor.fetchall()
+
+                cursor.execute(
+                    "SELECT id, app_label, model FROM django_content_type WHERE app_label = %s",
+                    ["shop"],
+                )
+                pending_content_types = cursor.fetchall()
+        except DatabaseError:
+            self.stdout.write(self.style.SUCCESS(
+                "Nothing to do: bookkeeping tables are not queryable yet "
+                "(fresh database)."
+            ))
+            return
 
         if not pending_migrations and not pending_content_types:
             self.stdout.write(self.style.SUCCESS(
@@ -85,8 +100,4 @@ class Command(BaseCommand):
             f"Renamed {migrations_updated} django_migrations row(s) and "
             f"{content_types_updated} django_content_type row(s) from 'shop' "
             "to 'sklepzdoniczkami'."
-        ))
-        self.stdout.write(self.style.SUCCESS(
-            "You can now deploy the code change that sets AppConfig.label = "
-            "'sklepzdoniczkami'."
         ))
