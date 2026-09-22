@@ -17,9 +17,7 @@ services:
       - key: SITE_NAME
         value: "Sklepzdoniczkami"
       - key: DATABASE_URL
-        fromDatabase:
-          name: sklepzdoniczkami
-          property: connectionString
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PUBLIC_KEY
@@ -27,8 +25,6 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
 
-databases:
-  - name: sklepzdoniczkami
-    databaseName: sklepzdoniczkami_otj7
-    user: sklepzdoniczkami_user
-    plan: free
+# Database is hosted externally on Neon (https://neon.tech), not on Render,
+# to avoid the 90-day expiry of Render's free Postgres plan.
+# DATABASE_URL is set directly as a service env var and is not managed here.
