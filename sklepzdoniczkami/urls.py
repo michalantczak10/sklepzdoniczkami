@@ -18,7 +18,7 @@ from .views import (
     stripe_webhook,
 )
 
-app_name = "shop"
+app_name = "sklepzdoniczkami"
 
 urlpatterns = [
     path("", ProductListView.as_view(), name="home"),
@@ -35,7 +35,7 @@ urlpatterns = [
     path("payment/cancel/<str:order_token>/", payment_cancel, name="payment_cancel"),
     path("stripe/webhook/", stripe_webhook, name="stripe_webhook"),
     path("login/", login_view, name="login"),
-    path("logout/", auth_views.LogoutView.as_view(next_page="shop:home"), name="logout"),
+    path("logout/", auth_views.LogoutView.as_view(next_page="sklepzdoniczkami:home"), name="logout"),
     path("register/", register_view, name="register"),
     path("profile/", profile_view, name="profile"),
 ]
