@@ -1,4 +1,4 @@
-{% extends 'shop/base.html' %}
+{% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}Logowanie{% endblock %}
 
@@ -12,6 +12,6 @@
                 <button class="btn" type="submit">Zaloguj</button>
             </div>
         </form>
-        <p>Nie masz konta? <a href="{% url 'shop:register' %}">Zarejestruj się</a></p>
+        <p>Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
     </div>
 {% endblock %}

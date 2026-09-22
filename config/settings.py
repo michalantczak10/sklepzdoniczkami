@@ -55,7 +55,7 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', 'whsec_dummy')
 # Application definition
 
 INSTALLED_APPS = [
-    'shop',
+    'sklepzdoniczkami',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -94,9 +94,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-LOGIN_URL = 'shop:login'
-LOGIN_REDIRECT_URL = 'shop:profile'
-LOGOUT_REDIRECT_URL = 'shop:home'
+LOGIN_URL = 'sklepzdoniczkami:login'
+LOGIN_REDIRECT_URL = 'sklepzdoniczkami:profile'
+LOGOUT_REDIRECT_URL = 'sklepzdoniczkami:home'
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases

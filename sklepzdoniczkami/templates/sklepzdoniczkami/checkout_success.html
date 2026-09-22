@@ -1,4 +1,4 @@
-{% extends 'shop/base.html' %}
+{% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}Potwierdzenie zamówienia{% endblock %}
 
@@ -11,6 +11,6 @@
         <p>Metoda płatności: {{ order.get_payment_method_display }}</p>
         <p>Metoda dostawy: {{ order.get_shipping_method_display }}</p>
         <p>Łączna kwota: <strong>{{ order.total }} zł</strong></p>
-        <a class="btn" href="{% url 'shop:home' %}">Wróć do sklepu</a>
+        <a class="btn" href="{% url 'sklepzdoniczkami:home' %}">Wróć do sklepu</a>
     </div>
 {% endblock %}

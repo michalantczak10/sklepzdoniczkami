@@ -6,6 +6,7 @@ __pycache__/
 *.sqlite3
 .env
 .env.*
+!.env.example
 staticfiles/
 .DS_Store
 coverage/

@@ -29,28 +29,30 @@ class ProductCatalogTests(TestCase):
         )
 
     def test_product_list_page_renders(self):
-        response = self.client.get(reverse("shop:home"))
+        response = self.client.get(reverse("sklepzdoniczkami:home"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Laptop Pro")
 
     def test_product_search_filters_results(self):
-        response = self.client.get(reverse("shop:products"), {"q": "laptop"})
+        response = self.client.get(reverse("sklepzdoniczkami:products"), {"q": "laptop"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Laptop Pro")
 
     def test_product_detail_page_renders(self):
-        response = self.client.get(reverse("shop:product", kwargs={"slug": self.product.slug}))
+        response = self.client.get(reverse("sklepzdoniczkami:product", kwargs={"slug": self.product.slug}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Laptop Pro")
         self.assertContains(response, "Nowoczesny laptop do pracy i nauki.")
 
     def test_add_to_cart_and_checkout(self):
-        add_response = self.client.post(reverse("shop:add_to_cart", kwargs={"product_id": self.product.pk}))
+        add_response = self.client.post(
+            reverse("sklepzdoniczkami:add_to_cart", kwargs={"product_id": self.product.pk})
+        )
         self.assertEqual(add_response.status_code, 302)
         self.assertEqual(self.client.session["cart"][str(self.product.pk)], 1)
 
         checkout_response = self.client.post(
-            reverse("shop:checkout"),
+            reverse("sklepzdoniczkami:checkout"),
             {
                 "first_name": "Anna",
                 "last_name": "Kowalska",
@@ -68,17 +70,17 @@ class ProductCatalogTests(TestCase):
 
     def test_user_registration_and_profile(self):
         response = self.client.post(
-            reverse("shop:register"),
+            reverse("sklepzdoniczkami:register"),
             {"username": "testuser", "password1": "StrongPass123!", "password2": "StrongPass123!"},
         )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(get_user_model().objects.filter(username="testuser").exists())
 
-        response = self.client.get(reverse("shop:profile"))
+        response = self.client.get(reverse("sklepzdoniczkami:profile"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "testuser")
 
-    @patch("shop.views.stripe.checkout.Session.create")
+    @patch("sklepzdoniczkami.views.stripe.checkout.Session.create")
     def test_stripe_checkout_redirects(self, mock_session_create):
         mock_session_create.return_value = type("Session", (), {"id": "cs_test_123", "url": "https://checkout.stripe.com/test"})()
 
@@ -96,7 +98,12 @@ class ProductCatalogTests(TestCase):
         OrderItem.objects.create(order=order, product=self.product, quantity=1, unit_price=self.product.price)
 
         token = make_order_access_token(order)
-        request = RequestFactory().get(reverse("shop:stripe_checkout", kwargs={"order_token": token}))
+        request = RequestFactory().get(
+            reverse(
+                "sklepzdoniczkami:stripe_checkout",
+                kwargs={"order_token": token},
+            )
+        )
         request.session = {}
         response = stripe_checkout(request, token)
 
@@ -105,10 +112,10 @@ class ProductCatalogTests(TestCase):
 
     def test_order_endpoints_reject_unsigned_order_ids(self):
         endpoint_names = (
-            "shop:stripe_checkout",
-            "shop:checkout_success",
-            "shop:payment_success",
-            "shop:payment_cancel",
+            "sklepzdoniczkami:stripe_checkout",
+            "sklepzdoniczkami:checkout_success",
+            "sklepzdoniczkami:payment_success",
+            "sklepzdoniczkami:payment_cancel",
         )
 
         for endpoint_name in endpoint_names:
@@ -132,7 +139,10 @@ class ProductCatalogTests(TestCase):
         token = make_order_access_token(order)
 
         response = self.client.get(
-            reverse("shop:checkout_success", kwargs={"order_token": token})
+            reverse(
+                "sklepzdoniczkami:checkout_success",
+                kwargs={"order_token": token},
+            )
         )
 
         self.assertEqual(response.status_code, 200)
@@ -147,12 +157,15 @@ class ProductCatalogTests(TestCase):
             return_value=1000 + ORDER_ACCESS_TOKEN_MAX_AGE + 1,
         ):
             response = self.client.get(
-                reverse("shop:checkout_success", kwargs={"order_token": token})
+                reverse(
+                    "sklepzdoniczkami:checkout_success",
+                    kwargs={"order_token": token},
+                )
             )
 
         self.assertEqual(response.status_code, 404)
 
-    @patch("shop.views.stripe.checkout.Session.create")
+    @patch("sklepzdoniczkami.views.stripe.checkout.Session.create")
     def test_paid_order_cannot_start_another_checkout(self, mock_session_create):
         order = Order.objects.create(
             first_name="Anna",
@@ -170,17 +183,20 @@ class ProductCatalogTests(TestCase):
         token = make_order_access_token(order)
 
         response = self.client.get(
-            reverse("shop:stripe_checkout", kwargs={"order_token": token})
+            reverse(
+                "sklepzdoniczkami:stripe_checkout",
+                kwargs={"order_token": token},
+            )
         )
 
         self.assertRedirects(
             response,
-            reverse("shop:checkout"),
+            reverse("sklepzdoniczkami:checkout"),
             fetch_redirect_response=False,
         )
         mock_session_create.assert_not_called()
 
-    @patch("shop.views.stripe.Webhook.construct_event")
+    @patch("sklepzdoniczkami.views.stripe.Webhook.construct_event")
     def test_stripe_webhook_is_idempotent(self, mock_construct_event):
         order = Order.objects.create(
             first_name="Anna",
@@ -203,7 +219,7 @@ class ProductCatalogTests(TestCase):
             },
         }
 
-        webhook_url = reverse("shop:stripe_webhook")
+        webhook_url = reverse("sklepzdoniczkami:stripe_webhook")
         first_response = self.client.post(
             webhook_url,
             data=b"payload",
@@ -226,7 +242,7 @@ class ProductCatalogTests(TestCase):
         self.assertTrue(order.is_paid)
         self.assertEqual(order.paid_at, first_paid_at)
 
-    @patch("shop.views.stripe.Webhook.construct_event")
+    @patch("sklepzdoniczkami.views.stripe.Webhook.construct_event")
     def test_stripe_webhook_ignores_session_without_order_metadata(self, mock_construct_event):
         mock_construct_event.return_value = {
             "type": "checkout.session.completed",
@@ -234,7 +250,7 @@ class ProductCatalogTests(TestCase):
         }
 
         response = self.client.post(
-            reverse("shop:stripe_webhook"),
+            reverse("sklepzdoniczkami:stripe_webhook"),
             data=b"payload",
             content_type="application/json",
             HTTP_STRIPE_SIGNATURE="test-signature",
