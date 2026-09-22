@@ -3,5 +3,5 @@ from django.apps import AppConfig
 
 class SklepzdoniczkamiConfig(AppConfig):
     name = "sklepzdoniczkami"
-    label = "shop"
+    label = "sklepzdoniczkami"
     verbose_name = "Sklepzdoniczkami"

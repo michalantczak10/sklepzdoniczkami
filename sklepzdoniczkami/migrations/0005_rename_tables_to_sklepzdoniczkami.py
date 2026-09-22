@@ -4,7 +4,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("shop", "0004_order_stripe_checkout_session_id_and_more"),
+        ("sklepzdoniczkami", "0004_order_stripe_checkout_session_id_and_more"),
     ]
 
     operations = [

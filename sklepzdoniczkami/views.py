@@ -19,7 +19,7 @@ from django.views.generic import DetailView, ListView
 from .models import Category, Order, OrderItem, Product
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-ORDER_ACCESS_SALT = "shop.order-access"
+ORDER_ACCESS_SALT = "sklepzdoniczkami.order-access"
 ORDER_ACCESS_TOKEN_MAX_AGE = 30 * 24 * 60 * 60
 
 

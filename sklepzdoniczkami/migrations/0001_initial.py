@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
                 ('price', models.DecimalField(decimal_places=2, max_digits=10)),
                 ('stock', models.PositiveIntegerField(default=0)),
                 ('is_active', models.BooleanField(default=True)),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='products', to='shop.category')),
+                ('category', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='products', to='sklepzdoniczkami.category')),
             ],
         ),
     ]
