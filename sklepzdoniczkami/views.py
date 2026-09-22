@@ -19,7 +19,7 @@ from django.views.generic import DetailView, ListView
 from .models import Category, Order, OrderItem, Product
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-ORDER_ACCESS_SALT = "shop.order-access"
+ORDER_ACCESS_SALT = "sklepzdoniczkami.order-access"
 ORDER_ACCESS_TOKEN_MAX_AGE = 30 * 24 * 60 * 60
 
 
@@ -76,7 +76,7 @@ def cart_items(request):
 
 class ProductListView(ListView):
     model = Product
-    template_name = "shop/product_list.html"
+    template_name = "sklepzdoniczkami/product_list.html"
     context_object_name = "products"
     paginate_by = 12
 
@@ -102,7 +102,7 @@ class ProductListView(ListView):
 
 class ProductDetailView(DetailView):
     model = Product
-    template_name = "shop/product_detail.html"
+    template_name = "sklepzdoniczkami/product_detail.html"
     context_object_name = "product"
 
     def get_queryset(self):
@@ -126,17 +126,17 @@ def cart_view(request):
         "total": total,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
-    return render(request, "shop/cart.html", context)
+    return render(request, "sklepzdoniczkami/cart.html", context)
 
 
 def add_to_cart(request, product_id):
     if request.method != "POST":
-        return redirect("shop:products")
+        return redirect("sklepzdoniczkami:products")
 
     product = Product.objects.filter(id=product_id, is_active=True).first()
     if not product:
         messages.error(request, "Produkt nie istnieje lub jest niedostępny.")
-        return redirect("shop:products")
+        return redirect("sklepzdoniczkami:products")
 
     cart = get_cart(request)
     cart[str(product.id)] = cart.get(str(product.id), 0) + 1
@@ -148,7 +148,7 @@ def add_to_cart(request, product_id):
     referer = request.META.get("HTTP_REFERER")
     if referer:
         return redirect(referer)
-    return redirect("shop:products")
+    return redirect("sklepzdoniczkami:products")
 
 
 def remove_from_cart(request, product_id):
@@ -156,14 +156,14 @@ def remove_from_cart(request, product_id):
     cart.pop(str(product_id), None)
     save_cart(request, cart)
     messages.info(request, "Produkt usunięty z koszyka.")
-    return redirect("shop:cart")
+    return redirect("sklepzdoniczkami:cart")
 
 
 def checkout_view(request):
     items, total = cart_items(request)
     if not items:
         messages.warning(request, "Koszyk jest pusty.")
-        return redirect("shop:cart")
+        return redirect("sklepzdoniczkami:cart")
 
     shipping_costs = {
         "pickup": Decimal("0.00"),
@@ -214,11 +214,17 @@ def checkout_view(request):
             order_token = make_order_access_token(order)
             if payment_method == "card":
                 # Stripe session is created after the order exists.
-                return redirect("shop:stripe_checkout", order_token=order_token)
+                return redirect(
+                    "sklepzdoniczkami:stripe_checkout",
+                    order_token=order_token,
+                )
 
             request.session["cart"] = {}
             request.session.modified = True
-            return redirect("shop:checkout_success", order_token=order_token)
+            return redirect(
+                "sklepzdoniczkami:checkout_success",
+                order_token=order_token,
+            )
 
     context = {
         "items": items,
@@ -226,17 +232,17 @@ def checkout_view(request):
         "shipping_costs": shipping_costs,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
-    return render(request, "shop/checkout.html", context)
+    return render(request, "sklepzdoniczkami/checkout.html", context)
 
 
 def stripe_checkout(request, order_token):
     order = get_order_from_access_token(order_token)
     if not settings.STRIPE_SECRET_KEY:
         messages.error(request, "Stripe nie jest skonfigurowany. Ustaw STRIPE_SECRET_KEY w środowisku.")
-        return redirect("shop:checkout")
+        return redirect("sklepzdoniczkami:checkout")
     if order.payment_method != "card" or order.is_paid or order.status != "pending":
         messages.error(request, "To zamówienie nie może rozpocząć płatności kartą.")
-        return redirect("shop:checkout")
+        return redirect("sklepzdoniczkami:checkout")
 
     line_items = []
     for item in order.items.all():
@@ -263,10 +269,16 @@ def stripe_checkout(request, order_token):
         line_items=line_items,
         mode="payment",
         success_url=request.build_absolute_uri(
-            reverse("shop:payment_success", kwargs={"order_token": order_token})
+            reverse(
+                "sklepzdoniczkami:payment_success",
+                kwargs={"order_token": order_token},
+            )
         ) + "?session_id={CHECKOUT_SESSION_ID}",
         cancel_url=request.build_absolute_uri(
-            reverse("shop:payment_cancel", kwargs={"order_token": order_token})
+            reverse(
+                "sklepzdoniczkami:payment_cancel",
+                kwargs={"order_token": order_token},
+            )
         ),
         customer_email=order.email,
         metadata={"order_id": str(order.id)},
@@ -325,7 +337,10 @@ def payment_success(request, order_token):
         messages.success(request, "Płatność została przyjęta. Zamówienie jest opłacone.")
     else:
         messages.info(request, "Oczekujemy na potwierdzenie płatności. Sprawdź status zamówienia za chwilę.")
-    return redirect("shop:checkout_success", order_token=order_token)
+    return redirect(
+        "sklepzdoniczkami:checkout_success",
+        order_token=order_token,
+    )
 
 
 def payment_cancel(request, order_token):
@@ -338,7 +353,7 @@ def payment_cancel(request, order_token):
             order.status = "cancelled"
             order.save(update_fields=["status"])
     messages.warning(request, "Płatność została anulowana. Możesz spróbować ponownie.")
-    return redirect("shop:checkout")
+    return redirect("sklepzdoniczkami:checkout")
 
 
 @csrf_exempt
@@ -382,42 +397,42 @@ def checkout_success(request, order_token):
         "order": order,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
-    return render(request, "shop/checkout_success.html", context)
+    return render(request, "sklepzdoniczkami/checkout_success.html", context)
 
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect("shop:profile")
+        return redirect("sklepzdoniczkami:profile")
 
     form = AuthenticationForm(request, data=request.POST or None)
     if request.method == "POST" and form.is_valid():
         login(request, form.get_user())
         messages.success(request, "Zalogowano pomyślnie.")
-        return redirect("shop:profile")
+        return redirect("sklepzdoniczkami:profile")
 
     context = {
         "form": form,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
-    return render(request, "shop/login.html", context)
+    return render(request, "sklepzdoniczkami/login.html", context)
 
 
 def register_view(request):
     if request.user.is_authenticated:
-        return redirect("shop:profile")
+        return redirect("sklepzdoniczkami:profile")
 
     form = UserCreationForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
         login(request, user)
         messages.success(request, "Konto zostało utworzone.")
-        return redirect("shop:profile")
+        return redirect("sklepzdoniczkami:profile")
 
     context = {
         "form": form,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
-    return render(request, "shop/register.html", context)
+    return render(request, "sklepzdoniczkami/register.html", context)
 
 
 @login_required
@@ -427,7 +442,7 @@ def profile_view(request):
         "orders": orders,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
-    return render(request, "shop/profile.html", context)
+    return render(request, "sklepzdoniczkami/profile.html", context)
 
 
 class CategoryListView(ProductListView):

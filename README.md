@@ -113,10 +113,10 @@ http://127.0.0.1:8000/admin/
 Uruchom testy:
 
 ```bash
-python manage.py test shop
+python manage.py test sklepzdoniczkami
 ```
 
-`pytest` also runs the Django tests in `shop/`. The browser tests are kept
+`pytest` also runs the Django tests in `sklepzdoniczkami/`. The browser tests are kept
 separate because they require a locally installed browser; run them with the
 command below.
 
@@ -146,7 +146,7 @@ uruchomienia. Testy należy wykonywać lokalnie lub na stagingu, nigdy na produk
 ```text
 sklepzdoniczkami/
 ├── config/                 # ustawienia Django i URL
-├── shop/                   # aplikacja sklepu
+├── sklepzdoniczkami/       # aplikacja sklepu
 │   ├── migrations/
 │   ├── templates/
 │   ├── admin.py

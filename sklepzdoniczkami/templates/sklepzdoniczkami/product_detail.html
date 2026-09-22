@@ -1,4 +1,4 @@
-{% extends 'shop/base.html' %}
+{% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}{{ product.name }}{% endblock %}
 
@@ -15,7 +15,7 @@
             <div class="meta">Kategoria: {{ product.category.name }}</div>
             <div class="meta"><a href="{{ product.category.get_absolute_url }}">Zobacz podobne produkty</a></div>
             <div class="actions">
-                <form method="post" action="{% url 'shop:add_to_cart' product.id %}">
+                <form method="post" action="{% url 'sklepzdoniczkami:add_to_cart' product.id %}">
                     {% csrf_token %}
                     <button class="btn" type="submit">Dodaj do koszyka</button>
                 </form>

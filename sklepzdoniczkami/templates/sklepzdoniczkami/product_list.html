@@ -1,4 +1,4 @@
-{% extends 'shop/base.html' %}
+{% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}
     {% if active_category %}{{ active_category.name }}{% else %}Produkty{% endif %}
@@ -14,7 +14,7 @@
     </h1>
 
     <div class="filters">
-        <form method="get" action="{% if active_category %}{{ active_category.get_absolute_url }}{% else %}{% url 'shop:products' %}{% endif %}">
+        <form method="get" action="{% if active_category %}{{ active_category.get_absolute_url }}{% else %}{% url 'sklepzdoniczkami:products' %}{% endif %}">
             <input type="text" name="q" value="{{ search_query }}" placeholder="Szukaj produktu...">
             <button type="submit">Szukaj</button>
         </form>
@@ -30,7 +30,7 @@
                 <p>Na stanie: {{ product.stock }}</p>
                 <div class="actions">
                     <a href="{{ product.get_absolute_url }}">Zobacz produkt</a>
-                    <form method="post" action="{% url 'shop:add_to_cart' product.id %}">
+                    <form method="post" action="{% url 'sklepzdoniczkami:add_to_cart' product.id %}">
                         {% csrf_token %}
                         <button type="submit">Dodaj do koszyka</button>
                     </form>

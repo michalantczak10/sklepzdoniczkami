@@ -4,7 +4,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from shop.models import Category, Order, Product
+from sklepzdoniczkami.models import Category, Order, Product
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def product(db):
 @pytest.mark.e2e
 @pytest.mark.django_db(transaction=True)
 def test_guest_can_add_product_to_cart(live_server, page: Page, product):
-    page.goto(live_server.url + reverse("shop:home"))
+    page.goto(live_server.url + reverse("sklepzdoniczkami:home"))
 
     expect(page.get_by_role("heading", name="Wszystkie produkty")).to_be_visible()
     expect(page.get_by_text(product.name)).to_be_visible()
@@ -57,7 +57,7 @@ def test_guest_can_add_product_to_cart(live_server, page: Page, product):
 @pytest.mark.e2e
 @pytest.mark.django_db(transaction=True)
 def test_guest_can_submit_transfer_order(live_server, page: Page, product):
-    page.goto(live_server.url + reverse("shop:home"))
+    page.goto(live_server.url + reverse("sklepzdoniczkami:home"))
     product_card = page.locator("article.product-card").filter(has_text=product.name)
     product_card.get_by_role("button", name="Dodaj do koszyka").click()
     page.get_by_role("link", name=re.compile(r"Koszyk")).click()
