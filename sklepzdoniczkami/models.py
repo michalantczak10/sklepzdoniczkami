@@ -8,6 +8,7 @@ class Category(models.Model):
     slug = models.SlugField(unique=True)
 
     class Meta:
+        db_table = "sklepzdoniczkami_category"
         verbose_name_plural = "categories"
 
     def __str__(self):
@@ -25,6 +26,9 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "sklepzdoniczkami_product"
 
     def __str__(self):
         return self.name
@@ -72,6 +76,9 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     paid_at = models.DateTimeField(null=True, blank=True)
 
+    class Meta:
+        db_table = "sklepzdoniczkami_order"
+
     def __str__(self):
         return f"Zamówienie #{self.pk}"
 
@@ -85,6 +92,9 @@ class OrderItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = "sklepzdoniczkami_orderitem"
 
     def __str__(self):
         return f"{self.product.name} x{self.quantity}"
