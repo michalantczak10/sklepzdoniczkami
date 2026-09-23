@@ -1,0 +1,54 @@
+name: Daily Encrypted Database Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # daily at 02:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client openssl
+
+      - name: Dump Postgres database (custom format)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "Creating dump..."
+          PGPASSWORD=$(python -c "import os,urllib.parse as u; u=parse:=u.urlparse(os.environ['DATABASE_URL']); print(u.password)")
+          export PGPASSWORD
+          # parse host,port,user,dbname
+          python - <<'PY'
+import os
+from urllib.parse import urlparse
+u=urlparse(os.environ['DATABASE_URL'])
+user=u.username
+host=u.hostname
+port=u.port or 5432
+dbname=u.path.lstrip('/')
+print(f"pg_dump -h {host} -p {port} -U {user} -Fc -f backup.dump {dbname}")
+PY
+          pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
+
+      - name: Encrypt dump
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          echo "Encrypting dump..."
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_ENCRYPTION_KEY
+          ls -lh backup.dump.enc
+
+      - name: Upload artifact (encrypted)
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup.dump.enc
+
+      - name: Cleanup
+        run: |
+          shred -u backup.dump || rm -f backup.dump
+          shred -u backup.dump.enc || rm -f backup.dump.enc
