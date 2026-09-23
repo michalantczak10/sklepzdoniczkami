@@ -43,13 +43,14 @@ jobs:
           openssl enc -d -aes-256-cbc -pbkdf2 -in backup.dump.enc -out backup.dump -pass env:BACKUP_ENCRYPTION_KEY
           ls -lh backup.dump
 
-      - name: Restore to staging
+      - name: Restore to staging (use postgres:18 docker pg_restore)
         env:
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
           if [ -z "$DATABASE_URL_STAGING" ]; then echo "DATABASE_URL_STAGING not set"; exit 1; fi
-          echo "Running pg_restore to $DATABASE_URL_STAGING"
-          pg_restore --verbose --no-owner --dbname="$DATABASE_URL_STAGING" backup.dump
+          echo "Running pg_restore using postgres:18 image"
+          # run pg_restore inside postgres:18 so binary versions match; mount workspace
+          docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_restore --verbose --no-owner --dbname="$DATABASE_URL_STAGING" backup.dump
 
       - name: Cleanup
         run: |
