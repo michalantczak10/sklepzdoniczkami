@@ -1,0 +1,74 @@
+name: Restore latest DB backup to staging
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y unzip openssl postgresql-client python3 python3-venv python3-pip
+
+      - name: Download latest db-backup artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+import os, sys, json, urllib.request, urllib.parse
+repo = os.environ['GITHUB_REPOSITORY']
+api = f"https://api.github.com/repos/{repo}/actions/artifacts"
+req = urllib.request.Request(api)
+req.add_header('Authorization', f"token {os.environ['GITHUB_TOKEN']}")
+with urllib.request.urlopen(req) as resp:
+    data = json.load(resp)
+items = data.get('artifacts', [])
+# find most recent artifact starting with db-backup
+art = None
+for a in items:
+    if a.get('name','').startswith('db-backup-'):
+        art = a
+        break
+if not art:
+    print('No db-backup artifact found', file=sys.stderr); sys.exit(2)
+zip_url = art['archive_download_url']
+print('Found artifact', art['name'])
+req2 = urllib.request.Request(zip_url)
+req2.add_header('Authorization', f"token {os.environ['GITHUB_TOKEN']}")
+with urllib.request.urlopen(req2) as r:
+    open('artifact.zip','wb').write(r.read())
+print('Downloaded artifact.zip')
+PY
+
+      - name: Unpack artifact
+        run: |
+          unzip -l artifact.zip || true
+          unzip -o artifact.zip
+
+      - name: Decrypt backup
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          if [ ! -f backup.dump.enc ]; then echo "No backup.dump.enc found"; ls -la; exit 1; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -in backup.dump.enc -out backup.dump -pass env:BACKUP_ENCRYPTION_KEY
+          ls -lh backup.dump
+
+      - name: Restore to staging
+        env:
+          DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          if [ -z "$DATABASE_URL_STAGING" ]; then echo "DATABASE_URL_STAGING not set"; exit 1; fi
+          echo "Running pg_restore to $DATABASE_URL_STAGING"
+          pg_restore --verbose --no-owner --dbname="$DATABASE_URL_STAGING" backup.dump
+
+      - name: Cleanup
+        run: |
+          rm -f artifact.zip backup.dump backup.dump.enc || true
+
+      - name: Report
+        run: echo "Restore finished"
