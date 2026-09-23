@@ -39,16 +39,23 @@ PY
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
           echo "Encrypting dump..."
+          if [ ! -f backup.dump ]; then echo "ERROR: backup.dump not found"; ls -la; exit 1; fi
           openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_ENCRYPTION_KEY
-          ls -lh backup.dump.enc
+          echo "Encrypted file size:"; ls -lh backup.dump.enc || true
+
+      - name: Verify encrypted file exists
+        run: |
+          echo "Checking encrypted file..."
+          if [ -f backup.dump.enc ]; then echo "OK: backup.dump.enc present"; ls -lh backup.dump.enc; else echo "ERROR: backup.dump.enc missing"; ls -la; exit 1; fi
 
       - name: Upload artifact (encrypted)
         uses: actions/upload-artifact@v4
         with:
-          name: db-backup-${{ github.run_id }}
+          name: db-backup-${{ github.run_id }}.enc
           path: backup.dump.enc
 
       - name: Cleanup
         run: |
+          echo "Cleaning up local files"
           shred -u backup.dump || rm -f backup.dump
           shred -u backup.dump.enc || rm -f backup.dump.enc
