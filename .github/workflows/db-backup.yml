@@ -12,7 +12,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client openssl
+          sudo apt-get install -y postgresql-client-18 openssl || sudo apt-get install -y postgresql-client openssl
 
       - name: Dump Postgres database (custom format)
         env:
