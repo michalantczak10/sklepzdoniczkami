@@ -12,7 +12,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y unzip openssl postgresql-client python3 python3-venv python3-pip
+          sudo apt-get install -y unzip openssl postgresql-client python3 python3-venv python3-pip docker.io
 
       - name: Download latest db-backup artifact
         env:
@@ -25,13 +25,12 @@ jobs:
           ZIP_URL=""
           page=1
           while :; do
-            resp=$(curl -sS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&page=$page")
+            resp=$(curl -fS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&page=$page")
             candidate=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-"))) | if length==0 then "" else (max_by(.created_at) | .archive_download_url) end')
             if [ -n "$candidate" ]; then
               ZIP_URL="$candidate"
               break
             fi
-            # if fewer than 100 returned, no more pages
             count=$(echo "$resp" | jq '.artifacts | length')
             if [ "$count" -lt 100 ]; then
               break
@@ -40,32 +39,51 @@ jobs:
           done
           if [ -z "$ZIP_URL" ]; then echo "No db-backup artifact found" >&2; exit 2; fi
           echo "Downloading artifact"
-          curl -sS -H "Authorization: token $GITHUB_TOKEN" -L "$ZIP_URL" -o artifact.zip
+          curl -fS -H "Authorization: token $GITHUB_TOKEN" -L "$ZIP_URL" -o artifact.zip
           echo "Downloaded artifact.zip ($(stat -c%s artifact.zip) bytes)"
+
       - name: Unpack artifact
         run: |
-          unzip -l artifact.zip || true
-          unzip -o artifact.zip
+          set -euo pipefail
+          tmpdir=$(mktemp -d)
+          # reject archives with absolute paths or parent directory traversals
+          if unzip -Z -1 artifact.zip | grep -E '(^/|(^|/)\.\./)'; then
+            echo "Unsafe paths in artifact.zip" >&2
+            rm -rf "$tmpdir"
+            exit 1
+          fi
+          unzip -o artifact.zip -d "$tmpdir"
+          if [ ! -f "$tmpdir/backup.dump.enc" ]; then
+            echo "No backup.dump.enc found in artifact" >&2
+            ls -la "$tmpdir"
+            rm -rf "$tmpdir"
+            exit 1
+          fi
+          mv "$tmpdir/backup.dump.enc" .
+          rm -rf "$tmpdir"
 
       - name: Decrypt backup
         env:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
+          set -euo pipefail
           if [ ! -f backup.dump.enc ]; then echo "No backup.dump.enc found"; ls -la; exit 1; fi
+          if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
           openssl enc -d -aes-256-cbc -pbkdf2 -in backup.dump.enc -out backup.dump -pass env:BACKUP_ENCRYPTION_KEY
-          ls -lh backup.dump
           # verify backup exists and is non-empty
           if [ ! -s backup.dump ]; then echo "backup.dump is missing or empty" >&2; exit 2; fi
+          chmod 600 backup.dump
 
       - name: Restore to staging (use postgres:18 docker pg_restore)
         env:
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
+          set -euo pipefail
           if [ -z "$DATABASE_URL_STAGING" ]; then echo "DATABASE_URL_STAGING not set"; exit 1; fi
           echo "Running pg_restore using postgres:18 image"
-          # run pg_restore inside postgres:18 so binary versions match; mount workspace
-          # pass DATABASE_URL into the container as an env var to avoid exposing it in the host command line
-          docker run --rm -e DATABASE_URL="$DATABASE_URL_STAGING" -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 sh -c 'pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump'
+          # export the DB URL in the shell so it's not interpolated into the docker CLI args
+          export DATABASE_URL="$DATABASE_URL_STAGING"
+          docker run --rm -e DATABASE_URL -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 sh -c 'pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump'
 
       - name: Cleanup
         if: always()
