@@ -12,7 +12,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y unzip openssl postgresql-client python3 python3-venv python3-pip docker.io
+          sudo apt-get install -y unzip openssl postgresql-client python3 python3-venv python3-pip
 
       - name: Download latest db-backup artifact
         env:
@@ -74,16 +74,21 @@ jobs:
           if [ ! -s backup.dump ]; then echo "backup.dump is missing or empty" >&2; exit 2; fi
           chmod 600 backup.dump
 
-      - name: Restore to staging (use postgres:18 docker pg_restore)
+      - name: Restore to staging (container or host pg_restore)
         env:
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
           set -euo pipefail
           if [ -z "$DATABASE_URL_STAGING" ]; then echo "DATABASE_URL_STAGING not set"; exit 1; fi
-          echo "Running pg_restore using postgres:18 image"
+          echo "Running pg_restore (container if docker available, otherwise host pg_restore)"
           # export the DB URL in the shell so it's not interpolated into the docker CLI args
           export DATABASE_URL="$DATABASE_URL_STAGING"
-          docker run --rm -e DATABASE_URL -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 sh -c 'pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump'
+          if command -v docker >/dev/null 2>&1; then
+            docker run --rm -e DATABASE_URL -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 sh -c 'pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump'
+          else
+            echo "docker not found, running pg_restore on host"
+            pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump
+          fi
 
       - name: Cleanup
         if: always()
