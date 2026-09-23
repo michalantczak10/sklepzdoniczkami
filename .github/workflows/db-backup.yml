@@ -20,19 +20,6 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           echo "Creating dump..."
-          PGPASSWORD=$(python -c "import os,urllib.parse as u; u=parse:=u.urlparse(os.environ['DATABASE_URL']); print(u.password)")
-          export PGPASSWORD
-          # parse host,port,user,dbname
-          python - <<'PY'
-import os
-from urllib.parse import urlparse
-u=urlparse(os.environ['DATABASE_URL'])
-user=u.username
-host=u.hostname
-port=u.port or 5432
-dbname=u.path.lstrip('/')
-print(f"pg_dump -h {host} -p {port} -U {user} -Fc -f backup.dump {dbname}")
-PY
           pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
 
       - name: Encrypt dump
