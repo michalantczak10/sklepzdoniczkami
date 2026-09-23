@@ -14,11 +14,11 @@ services:
       - db
 
   db:
-    image: postgres:16
+    image: postgres:18
     environment:
-      POSTGRES_DB: sklepzdoniczkami
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sklep_dev
+      POSTGRES_USER: sklep
+      POSTGRES_PASSWORD: sklep_pass
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
