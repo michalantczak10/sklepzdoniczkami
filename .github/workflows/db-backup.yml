@@ -12,14 +12,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client-18 openssl || sudo apt-get install -y postgresql-client openssl
+          sudo apt-get install -y docker.io openssl || true
 
       - name: Dump Postgres database (custom format)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          echo "Creating dump..."
-          pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
+          echo "Creating dump using postgres:18 docker image..."
+          docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
 
       - name: Encrypt dump
         env:
