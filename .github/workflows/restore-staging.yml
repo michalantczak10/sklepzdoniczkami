@@ -18,32 +18,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 - <<'PY'
-import os, sys, json, urllib.request, urllib.parse
-repo = os.environ['GITHUB_REPOSITORY']
-api = f"https://api.github.com/repos/{repo}/actions/artifacts"
-req = urllib.request.Request(api)
-req.add_header('Authorization', f"token {os.environ['GITHUB_TOKEN']}")
-with urllib.request.urlopen(req) as resp:
-    data = json.load(resp)
-items = data.get('artifacts', [])
-# find most recent artifact starting with db-backup
-art = None
-for a in items:
-    if a.get('name','').startswith('db-backup-'):
-        art = a
-        break
-if not art:
-    print('No db-backup artifact found', file=sys.stderr); sys.exit(2)
-zip_url = art['archive_download_url']
-print('Found artifact', art['name'])
-req2 = urllib.request.Request(zip_url)
-req2.add_header('Authorization', f"token {os.environ['GITHUB_TOKEN']}")
-with urllib.request.urlopen(req2) as r:
-    open('artifact.zip','wb').write(r.read())
-print('Downloaded artifact.zip')
-PY
-
+          set -e
+          echo "Installing jq"
+          sudo apt-get update -y && sudo apt-get install -y jq
+          echo "Listing artifacts via GitHub API"
+          ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts")
+          ART_ID=$(echo "$ARTIFACTS_JSON" | jq -r '.artifacts[] | select(.name|startswith("db-backup-")) | .id' | head -n1)
+          if [ -z "$ART_ID" ]; then echo "No db-backup artifact found"; exit 2; fi
+          echo "Found artifact id: $ART_ID"
+          ZIP_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ART_ID/zip"
+          echo "Downloading artifact.zip"
+          curl -L -s -H "Authorization: token $GITHUB_TOKEN" "$ZIP_URL" -o artifact.zip
+          echo "Downloaded artifact.zip ($(stat -c%s artifact.zip) bytes)"
       - name: Unpack artifact
         run: |
           unzip -l artifact.zip || true
