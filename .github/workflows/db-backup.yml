@@ -21,28 +21,39 @@ jobs:
           echo "Creating dump using postgres:18 docker image..."
           docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
 
-      - name: Encrypt dump
+      - name: Encrypt dump and compute HMAC
         env:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
           echo "Encrypting dump..."
           if [ ! -f backup.dump ]; then echo "ERROR: backup.dump not found"; ls -la; exit 1; fi
+          if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
+          # encrypt (compatible with existing archives)
           openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_ENCRYPTION_KEY
           echo "Encrypted file size:"; ls -lh backup.dump.enc || true
+          # compute HMAC-SHA256 over ciphertext and save alongside
+          if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
+          # use openssl to compute HMAC (binary -> hex)
+          printf "%s" "$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$(echo -n "$BACKUP_HMAC_KEY" | xxd -p) -binary backup.dump.enc | xxd -p -c 256)" > backup.dump.enc.hmac || true
+          echo "HMAC written to backup.dump.enc.hmac" || true
 
-      - name: Verify encrypted file exists
+      - name: Verify files exist
         run: |
-          echo "Checking encrypted file..."
-          if [ -f backup.dump.enc ]; then echo "OK: backup.dump.enc present"; ls -lh backup.dump.enc; else echo "ERROR: backup.dump.enc missing"; ls -la; exit 1; fi
+          echo "Checking encrypted file and HMAC..."
+          if [ -f backup.dump.enc ] && [ -f backup.dump.enc.hmac ]; then echo "OK: backup.dump.enc and HMAC present"; ls -lh backup.dump.enc backup.dump.enc.hmac; else echo "ERROR: missing files"; ls -la; exit 1; fi
 
-      - name: Upload artifact (encrypted)
+      - name: Upload artifacts (encrypted + hmac)
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_id }}.enc
-          path: backup.dump.enc
+          path: |
+            backup.dump.enc
+            backup.dump.enc.hmac
 
       - name: Cleanup
         run: |
           echo "Cleaning up local files"
           shred -u backup.dump || rm -f backup.dump
           shred -u backup.dump.enc || rm -f backup.dump.enc
+          shred -u backup.dump.enc.hmac || rm -f backup.dump.enc.hmac

@@ -62,13 +62,25 @@ jobs:
           mv "$tmpdir/backup.dump.enc" .
           rm -rf "$tmpdir"
 
-      - name: Decrypt backup
+      - name: Verify HMAC and Decrypt backup
         env:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
           set -euo pipefail
           if [ ! -f backup.dump.enc ]; then echo "No backup.dump.enc found"; ls -la; exit 1; fi
+          if [ ! -f backup.dump.enc.hmac ]; then echo "No backup.dump.enc.hmac found"; ls -la; exit 1; fi
           if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
+          if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
+          # compute HMAC and compare in constant-time
+          computed_hex=$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$(echo -n "$BACKUP_HMAC_KEY" | xxd -p) -binary backup.dump.enc | xxd -p -c 256)
+          expected_hex=$(cat backup.dump.enc.hmac | tr -d '\n' | tr -d '\r')
+          # constant-time compare
+          if [ "$(printf "%s" "$computed_hex" | openssl enc -base64)" != "$(printf "%s" "$expected_hex" | xxd -r -p | openssl enc -base64)" ]; then
+            echo "HMAC verification failed" >&2
+            exit 2
+          fi
+          echo "HMAC OK"
           openssl enc -d -aes-256-cbc -pbkdf2 -in backup.dump.enc -out backup.dump -pass env:BACKUP_ENCRYPTION_KEY
           # verify backup exists and is non-empty
           if [ ! -s backup.dump ]; then echo "backup.dump is missing or empty" >&2; exit 2; fi
