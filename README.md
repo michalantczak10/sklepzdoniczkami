@@ -179,3 +179,37 @@ Po uruchomieniu projektu można rozwijać dalej takie elementy jak:
 - wyszukiwanie i filtry SEO
 - integracja z dostawcą wysyłki
 - pełna obsługa zamówień w panelu admina
+
+## Procedura testowego restore bazy (staging)
+
+Krótka instrukcja jak przetestować przywracanie backupu do staging i sprawdzić integralność:
+
+1. Przywracanie (wykorzystanie istniejącego workflow):
+   - Workflow `restore-staging.yml` pobiera najnowszy zaszyfrowany artefakt backupu, odszyfrowuje go (sekret BACKUP_ENCRYPTION_KEY) i uruchamia pg_restore wewnątrz obrazu postgres:18.
+   - Upewnij się, że secret `DATABASE_URL_STAGING` wskazuje poprawną bazę staging (Neon) i że runner ma dostęp (sieć/autoryzacja).
+
+2. Sanity checks po restore (ręcznie lub przez workflow):
+   - Policz rekordy w kluczowych tabelach:
+     - SELECT count(*) FROM sklepzdoniczkami_product;
+     - SELECT count(*) FROM sklepzdoniczkami_order;
+     - SELECT count(*) FROM sklepzdoniczkami_orderitem;
+     - SELECT count(*) FROM auth_user;
+   - Sprawdź, że tabele i sekwencje zostały utworzone i sekwencje ustawione (pg_restore wypisuje "SEQUENCE SET ...").
+
+3. Co zrobić, gdy brak danych:
+   - Sprawdź rozmiar artefaktu backupu (artifact w GitHub Actions) — czy backup.dump ma oczekiwany rozmiar.
+   - Pobierz artefakt lokalnie i uruchom: `pg_restore --list backup.dump` by zobaczyć listę obiektów i upewnić się, że są tam oczekiwane tabele.
+   - Potwierdź, że pg_restore użyto zgodnej wersji binarek (używamy postgres:18 w workflow). Problem z wersjami powoduje błędy lub brak zgodności.
+   - Zweryfikuj, że DATABASE_URL_STAGING wskazuje właściwą bazę (nie omyłkowo inny projekt/neon).
+
+4. Automatyczne testy (zalecane):
+   - Zaplanuj okresowy test restore (np. co 30 dni) jako workflow cron uruchamiający przywracanie do wydzielonej bazy testowej i wykonujący sanity checks.
+   - Upewnij się, że baza testowa jest bezpieczna i rotowana, oraz że koszty transferu danych są akceptowalne.
+
+5. Bezpieczeństwo i retention:
+   - Artefakty GitHub mają ograniczoną retencję — rozważ długoterminowe przechowywanie backupów w S3/Backblaze z szyfrowaniem klienta.
+   - Rotuj klucz szyfrujący BACKUP_ENCRYPTION_KEY i ogranicz dostęp do sekretów w GitHub.
+
+Jeśli chcesz, mogę:
+- Dodać sekcję z poleceniami (psql) i przykładowymi SELECTami jako skrypt w repo (do uruchomienia lokalnie),
+- Albo dodać przykład workflow cron, który wykona testowe restore co 30 dni.
