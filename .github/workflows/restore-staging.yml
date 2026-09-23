@@ -1,7 +1,6 @@
 name: Restore latest DB backup to staging
 
-on:
-  workflow_dispatch: {}
+on: [workflow_dispatch]
 
 jobs:
   restore:
