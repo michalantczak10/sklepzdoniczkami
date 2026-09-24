@@ -94,10 +94,14 @@ jobs:
             if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
             # decode base64 HMAC key into hex
             key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
+            # compute HMAC (hex) over encrypted blob
             computed_hex=$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256)
             expected_hex=$(cat backup.dump.enc.hmac | tr -d '\n' | tr -d '\r')
-            if [ "$(printf "%s" "$computed_hex" | openssl enc -base64)" != "$(printf "%s" "$expected_hex" | xxd -r -p | openssl enc -base64)" ]; then
+            # compare hex-to-hex to avoid double-encoding mismatches
+            if [ "$computed_hex" != "$expected_hex" ]; then
               echo "HMAC verification failed" >&2
+              echo "computed: $computed_hex" >&2
+              echo "expected: $expected_hex" >&2
               exit 2
             fi
             echo "HMAC OK"
