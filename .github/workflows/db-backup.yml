@@ -33,7 +33,9 @@ jobs:
           openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_ENCRYPTION_KEY
           echo "Encrypted file size:"; ls -lh backup.dump.enc || true
           if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
-          printf "%s" "$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$(echo -n "$BACKUP_HMAC_KEY" | xxd -p) -binary backup.dump.enc | xxd -p -c 256)" > backup.dump.enc.hmac || true
+          # compute HMAC using raw key decoded from base64 BACKUP_HMAC_KEY
+          key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
+          printf "%s" "$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256)" > backup.dump.enc.hmac || true
           echo "HMAC written to backup.dump.enc.hmac" || true
           # v2: AES-GCM AEAD (preferred). Note: requires openssl with AES-GCM support on runner.
           openssl enc -aes-256-gcm -pbkdf2 -salt -in backup.dump -out backup.dump.v2.enc -pass env:BACKUP_ENCRYPTION_KEY || true

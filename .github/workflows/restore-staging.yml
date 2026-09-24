@@ -92,7 +92,9 @@ jobs:
             echo "v2 not found; falling back to v1 AES-CBC + HMAC"
             if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
             if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
-            computed_hex=$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$(echo -n "$BACKUP_HMAC_KEY" | xxd -p) -binary backup.dump.enc | xxd -p -c 256)
+            # decode base64 HMAC key into hex
+            key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
+            computed_hex=$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256)
             expected_hex=$(cat backup.dump.enc.hmac | tr -d '\n' | tr -d '\r')
             if [ "$(printf "%s" "$computed_hex" | openssl enc -base64)" != "$(printf "%s" "$expected_hex" | xxd -r -p | openssl enc -base64)" ]; then
               echo "HMAC verification failed" >&2
