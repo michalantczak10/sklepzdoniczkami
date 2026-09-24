@@ -75,8 +75,12 @@ jobs:
       - name: Package all backup files into tarball
         run: |
           echo "Packaging backup files into a single tarball to ensure metadata persists"
-          tar czf db-backup-files-${{ github.run_id }}.tgz --ignore-failed-read backup.dump.v2.enc backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt || true
-          echo "Tarball size:"; ls -lh db-backup-files-${{ github.run_id }}.tgz || true
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          # copy files into workspace root explicitly
+          cp -v backup.dump.enc* backup.dump.v2.enc* backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt "$GITHUB_WORKSPACE/" || true
+          ls -la "$GITHUB_WORKSPACE" || true
+          tar czf "$GITHUB_WORKSPACE/db-backup-files-${{ github.run_id }}.tgz" -C "$GITHUB_WORKSPACE" --ignore-failed-read backup.dump.v2.enc backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt || true
+          echo "Tarball size:"; ls -lh "$GITHUB_WORKSPACE/db-backup-files-${{ github.run_id }}.tgz" || true
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
