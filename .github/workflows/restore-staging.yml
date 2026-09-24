@@ -53,13 +53,26 @@ jobs:
             exit 1
           fi
           unzip -o artifact.zip -d "$tmpdir"
-          if [ ! -f "$tmpdir/backup.dump.enc" ]; then
-            echo "No backup.dump.enc found in artifact" >&2
+          # move supported files into workspace: v2, v1 and its hmac
+          moved=false
+          if [ -f "$tmpdir/backup.dump.v2.enc" ]; then
+            mv "$tmpdir/backup.dump.v2.enc" .
+            moved=true
+          fi
+          if [ -f "$tmpdir/backup.dump.enc" ]; then
+            mv "$tmpdir/backup.dump.enc" .
+            moved=true
+          fi
+          if [ -f "$tmpdir/backup.dump.enc.hmac" ]; then
+            mv "$tmpdir/backup.dump.enc.hmac" .
+            moved=true
+          fi
+          if [ "$moved" = false ]; then
+            echo "No supported backup files found in artifact" >&2
             ls -la "$tmpdir"
             rm -rf "$tmpdir"
             exit 1
           fi
-          mv "$tmpdir/backup.dump.enc" .
           rm -rf "$tmpdir"
 
       - name: Detect format and Decrypt backup (v2 preferred)
