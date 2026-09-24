@@ -15,3 +15,6 @@ test-results/
 playwright-report/
 .idea/
 .vscode/
+
+# CI artifacts and temporary downloads
+artifacts/
