@@ -37,6 +37,10 @@ jobs:
           key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
           printf "%s" "$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256)" > backup.dump.enc.hmac || true
           echo "HMAC written to backup.dump.enc.hmac" || true
+          # record short key identifier (first 8 hex chars of sha256(key)) to help restore pick matching artifact
+          key_id=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | openssl dgst -sha256 -hex | awk '{print $2}' | cut -c1-8)
+          echo "$key_id" > backup.hmac.keyid || true
+          echo "Wrote key id: $(cat backup.hmac.keyid)"
           # v2: AES-GCM AEAD (preferred). Note: requires openssl with AES-GCM support on runner.
           openssl enc -aes-256-gcm -pbkdf2 -salt -in backup.dump -out backup.dump.v2.enc -pass env:BACKUP_ENCRYPTION_KEY || true
           if [ -f backup.dump.v2.enc ]; then echo "Created AES-GCM v2 encrypted file"; ls -lh backup.dump.v2.enc || true; fi

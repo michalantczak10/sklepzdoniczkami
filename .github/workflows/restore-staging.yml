@@ -99,6 +99,19 @@ jobs:
             echo "v2 not found; falling back to v1 AES-CBC + HMAC"
             if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
             if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
+            # check key id metadata if present
+            if [ -f backup.hmac.keyid ]; then
+              expected_keyid=$(cat backup.hmac.keyid | tr -d '\n' | tr -d '\r')
+              current_keyid=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | openssl dgst -sha256 -hex | awk '{print $2}' | cut -c1-8)
+              echo "artifact key id: $expected_keyid, current key id: $current_keyid"
+              if [ "$expected_keyid" != "$current_keyid" ]; then
+                echo "Key ID mismatch: artifact signed with different HMAC key. Aborting." >&2
+                exit 3
+              fi
+              echo "Key id matches"
+            else
+              echo "No backup.hmac.keyid present in artifact; proceeding with HMAC check (legacy)"
+            fi
             # decode base64 HMAC key into hex
             key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
             # diagnostic: list files and compute hashes before HMAC check
