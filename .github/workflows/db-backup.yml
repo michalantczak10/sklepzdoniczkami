@@ -45,6 +45,11 @@ jobs:
           echo "$key_id" > backup.hmac.keyid
           if [ ! -s backup.hmac.keyid ]; then echo "ERROR: failed to write backup.hmac.keyid"; ls -la; exit 1; fi
           echo "Wrote key id: $(cat backup.hmac.keyid)"
+          # duplicate keyid into a file with different name to ensure artifact picks it up
+          cp backup.hmac.keyid backup.dump.enc.keyid || true
+          echo "keyid-copied" > workflow-metadata.txt || true
+          echo "backup_hmac_keyid=$(cat backup.hmac.keyid)" >> workflow-metadata.txt || true
+          echo "Wrote workflow-metadata.txt contents:"; cat workflow-metadata.txt || true
           # v2: AES-GCM AEAD (preferred). Note: requires openssl with AES-GCM support on runner.
           openssl enc -aes-256-gcm -pbkdf2 -salt -in backup.dump -out backup.dump.v2.enc -pass env:BACKUP_ENCRYPTION_KEY || true
           if [ -f backup.dump.v2.enc ]; then echo "Created AES-GCM v2 encrypted file"; ls -lh backup.dump.v2.enc || true; fi
@@ -76,6 +81,8 @@ jobs:
             backup.dump.enc
             backup.dump.enc.hmac
             backup.hmac.keyid
+            backup.dump.enc.keyid
+            workflow-metadata.txt
 
       - name: Cleanup
         run: |
