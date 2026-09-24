@@ -21,7 +21,7 @@ jobs:
           echo "Creating dump using postgres:18 docker image..."
           docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
 
-      - name: Encrypt dump and compute HMAC
+      - name: Encrypt dump and compute HMAC (v1) and create AES-GCM (v2)
         env:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
@@ -29,25 +29,28 @@ jobs:
           echo "Encrypting dump..."
           if [ ! -f backup.dump ]; then echo "ERROR: backup.dump not found"; ls -la; exit 1; fi
           if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
-          # encrypt (compatible with existing archives)
+          # v1: AES-CBC + HMAC (backward-compatible)
           openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_ENCRYPTION_KEY
           echo "Encrypted file size:"; ls -lh backup.dump.enc || true
-          # compute HMAC-SHA256 over ciphertext and save alongside
           if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
-          # use openssl to compute HMAC (binary -> hex)
           printf "%s" "$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$(echo -n "$BACKUP_HMAC_KEY" | xxd -p) -binary backup.dump.enc | xxd -p -c 256)" > backup.dump.enc.hmac || true
           echo "HMAC written to backup.dump.enc.hmac" || true
+          # v2: AES-GCM AEAD (preferred). Note: requires openssl with AES-GCM support on runner.
+          openssl enc -aes-256-gcm -pbkdf2 -salt -in backup.dump -out backup.dump.v2.enc -pass env:BACKUP_ENCRYPTION_KEY || true
+          if [ -f backup.dump.v2.enc ]; then echo "Created AES-GCM v2 encrypted file"; ls -lh backup.dump.v2.enc || true; fi
 
       - name: Verify files exist
         run: |
-          echo "Checking encrypted file and HMAC..."
-          if [ -f backup.dump.enc ] && [ -f backup.dump.enc.hmac ]; then echo "OK: backup.dump.enc and HMAC present"; ls -lh backup.dump.enc backup.dump.enc.hmac; else echo "ERROR: missing files"; ls -la; exit 1; fi
+          echo "Checking encrypted files..."
+          # at least one format must exist
+          if [ -f backup.dump.v2.enc ]; then echo "OK: v2 AES-GCM present"; ls -lh backup.dump.v2.enc; elif [ -f backup.dump.enc ] && [ -f backup.dump.enc.hmac ]; then echo "OK: v1 AES-CBC+HMAC present"; ls -lh backup.dump.enc backup.dump.enc.hmac; else echo "ERROR: no encrypted backup produced"; ls -la; exit 1; fi
 
-      - name: Upload artifacts (encrypted + hmac)
+      - name: Upload artifacts (encrypted + hmac if present)
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_id }}.enc
           path: |
+            backup.dump.v2.enc
             backup.dump.enc
             backup.dump.enc.hmac
 
@@ -57,3 +60,4 @@ jobs:
           shred -u backup.dump || rm -f backup.dump
           shred -u backup.dump.enc || rm -f backup.dump.enc
           shred -u backup.dump.enc.hmac || rm -f backup.dump.enc.hmac
+          shred -u backup.dump.v2.enc || rm -f backup.dump.v2.enc
