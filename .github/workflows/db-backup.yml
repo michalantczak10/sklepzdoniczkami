@@ -97,3 +97,10 @@ jobs:
           shred -u backup.dump.enc || rm -f backup.dump.enc
           shred -u backup.dump.enc.hmac || rm -f backup.dump.enc.hmac
           shred -u backup.dump.v2.enc || rm -f backup.dump.v2.enc
+          # remove generated metadata and packaged tarball
+          rm -f backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt || true
+          rm -f db-backup-files-*.tgz || true
+          # also remove any copies in GITHUB_WORKSPACE
+          if [ -n "${GITHUB_WORKSPACE:-}" ] && [ -d "$GITHUB_WORKSPACE" ]; then
+            rm -f "$GITHUB_WORKSPACE/backup.hmac.keyid" "$GITHUB_WORKSPACE/backup.dump.enc.*" "$GITHUB_WORKSPACE/db-backup-files-*.tgz" || true
+          fi
