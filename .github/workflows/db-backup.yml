@@ -55,6 +55,18 @@ jobs:
           # at least one format must exist
           if [ -f backup.dump.v2.enc ]; then echo "OK: v2 AES-GCM present"; ls -lh backup.dump.v2.enc; elif [ -f backup.dump.enc ] && [ -f backup.dump.enc.hmac ]; then echo "OK: v1 AES-CBC+HMAC present"; ls -lh backup.dump.enc backup.dump.enc.hmac; else echo "ERROR: no encrypted backup produced"; ls -la; exit 1; fi
 
+      - name: Debug before upload (show keyid/hmac)
+        run: |
+          echo "=== Debug: listing current directory ==="
+          ls -la || true
+          echo "=== Check backup.hmac.keyid ==="
+          if [ -f backup.hmac.keyid ]; then echo "backup.hmac.keyid exists:"; cat backup.hmac.keyid; else echo "backup.hmac.keyid MISSING"; fi
+          stat --printf="keyid: %s bytes\n" backup.hmac.keyid 2>/dev/null || true
+          echo "=== Check backup.dump.enc.hmac ==="
+          if [ -f backup.dump.enc.hmac ]; then echo "backup.dump.enc.hmac size:"; wc -c backup.dump.enc.hmac; echo "contents:"; cat backup.dump.enc.hmac; else echo "backup.dump.enc.hmac MISSING"; fi
+          echo "=== Recursive ls ==="
+          ls -R || true
+
       - name: Upload artifacts (encrypted + hmac if present)
         uses: actions/upload-artifact@v4
         with:
