@@ -59,6 +59,7 @@ jobs:
             backup.dump.v2.enc
             backup.dump.enc
             backup.dump.enc.hmac
+            backup.hmac.keyid
 
       - name: Cleanup
         run: |
