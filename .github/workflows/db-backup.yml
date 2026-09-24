@@ -72,23 +72,17 @@ jobs:
           echo "=== Recursive ls ==="
           ls -R || true
 
-      - name: Upload artifacts (encrypted + hmac if present)
-        uses: actions/upload-artifact@v4
-        with:
-          name: db-backup-${{ github.run_id }}.enc
-          path: |
-            backup.dump.v2.enc
-            backup.dump.enc
-            backup.dump.enc.hmac
+      - name: Package all backup files into tarball
+        run: |
+          echo "Packaging backup files into a single tarball to ensure metadata persists"
+          tar czf db-backup-files-${{ github.run_id }}.tgz --ignore-failed-read backup.dump.v2.enc backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt || true
+          echo "Tarball size:"; ls -lh db-backup-files-${{ github.run_id }}.tgz || true
 
-      - name: Upload metadata files (explicit)
+      - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
-          name: db-backup-metadata-${{ github.run_id }}.txt
-          path: |
-            backup.hmac.keyid
-            backup.dump.enc.keyid
-            workflow-metadata.txt
+          name: db-backup-package-${{ github.run_id }}.tgz
+          path: db-backup-files-${{ github.run_id }}.tgz
 
       - name: Cleanup
         run: |
