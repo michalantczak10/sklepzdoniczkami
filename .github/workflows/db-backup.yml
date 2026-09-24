@@ -80,6 +80,12 @@ jobs:
             backup.dump.v2.enc
             backup.dump.enc
             backup.dump.enc.hmac
+
+      - name: Upload metadata files (explicit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-metadata-${{ github.run_id }}.txt
+          path: |
             backup.hmac.keyid
             backup.dump.enc.keyid
             workflow-metadata.txt
