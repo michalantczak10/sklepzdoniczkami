@@ -184,6 +184,19 @@ Po uruchomieniu projektu można rozwijać dalej takie elementy jak:
 
 Krótka instrukcja jak przetestować przywracanie backupu do staging i sprawdzić integralność:
 
+
+### Czyszczenie lokalnych artefaktów
+
+Podczas debugowania backupów workflow tworzy lokalne katalogi z artefaktami. Użyj dostarczonego skryptu do szybkiego posprzątania środowiska:
+
+```bash
+# uruchom z katalogu repo
+scripts/cleanup_artifacts.sh
+```
+
+Skrypt usuwa katalogi artifacts/ i tymczasowe pobrane artefakty z C:\\temp, a także typowe pliki backupowe w katalogu repo.
+
+
 1. Przywracanie (wykorzystanie istniejącego workflow):
    - Workflow `restore-staging.yml` pobiera najnowszy zaszyfrowany artefakt backupu, odszyfrowuje go (sekret BACKUP_ENCRYPTION_KEY) i uruchamia pg_restore wewnątrz obrazu postgres:18.
    - Upewnij się, że secret `DATABASE_URL_STAGING` wskazuje poprawną bazę staging (Neon) i że runner ma dostęp (sieć/autoryzacja).
