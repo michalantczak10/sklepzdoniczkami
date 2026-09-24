@@ -27,6 +27,7 @@ jobs:
           BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
           echo "Encrypting dump..."
+          set -o pipefail
           if [ ! -f backup.dump ]; then echo "ERROR: backup.dump not found"; ls -la; exit 1; fi
           if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
           # v1: AES-CBC + HMAC (backward-compatible)
@@ -35,11 +36,14 @@ jobs:
           if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
           # compute HMAC using raw key decoded from base64 BACKUP_HMAC_KEY
           key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
-          printf "%s" "$(openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256)" > backup.dump.enc.hmac || true
-          echo "HMAC written to backup.dump.enc.hmac" || true
+          openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256 > backup.dump.enc.hmac
+          echo "HMAC written to backup.dump.enc.hmac (size: $(wc -c < backup.dump.enc.hmac) bytes)"
+          # verify hmac non-empty
+          if [ ! -s backup.dump.enc.hmac ]; then echo "ERROR: backup.dump.enc.hmac is empty"; ls -la; exit 1; fi
           # record short key identifier (first 8 hex chars of sha256(key)) to help restore pick matching artifact
           key_id=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | openssl dgst -sha256 -hex | awk '{print $2}' | cut -c1-8)
-          echo "$key_id" > backup.hmac.keyid || true
+          echo "$key_id" > backup.hmac.keyid
+          if [ ! -s backup.hmac.keyid ]; then echo "ERROR: failed to write backup.hmac.keyid"; ls -la; exit 1; fi
           echo "Wrote key id: $(cat backup.hmac.keyid)"
           # v2: AES-GCM AEAD (preferred). Note: requires openssl with AES-GCM support on runner.
           openssl enc -aes-256-gcm -pbkdf2 -salt -in backup.dump -out backup.dump.v2.enc -pass env:BACKUP_ENCRYPTION_KEY || true
