@@ -17,7 +17,7 @@ jobs:
       - name: Download db-backup artifact (prefer specific run if provided)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BACKUP_ARTIFACT_RUN: 36040434947
+          BACKUP_ARTIFACT_RUN: 36042135603
         run: |
           set -euo pipefail
           echo "Installing jq"
