@@ -14,31 +14,38 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y unzip openssl postgresql-client python3 python3-venv python3-pip
 
-      - name: Download latest db-backup artifact
+      - name: Download db-backup artifact (prefer specific run if provided)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKUP_ARTIFACT_RUN: 36040434947
         run: |
           set -euo pipefail
           echo "Installing jq"
           sudo apt-get update -y && sudo apt-get install -y jq
-          echo "Listing artifacts via GitHub API (paginated)"
           ZIP_URL=""
-          page=1
-          while :; do
-            resp=$(curl -fS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&page=$page")
-            candidate=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-"))) | if length==0 then "" else (max_by(.created_at) | .archive_download_url) end')
-            if [ -n "$candidate" ]; then
-              ZIP_URL="$candidate"
-              break
-            fi
-            count=$(echo "$resp" | jq '.artifacts | length')
-            if [ "$count" -lt 100 ]; then
-              break
-            fi
-            page=$((page+1))
-          done
+          if [ -n "${BACKUP_ARTIFACT_RUN:-}" ]; then
+            echo "Looking for artifact in run $BACKUP_ARTIFACT_RUN"
+            resp=$(curl -fS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$BACKUP_ARTIFACT_RUN/artifacts")
+            ZIP_URL=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-"))) | if length==0 then "" else (.[0].archive_download_url) end')
+          else
+            echo "Listing artifacts via GitHub API (paginated)"
+            page=1
+            while :; do
+              resp=$(curl -fS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&page=$page")
+              candidate=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-"))) | if length==0 then "" else (max_by(.created_at) | .archive_download_url) end')
+              if [ -n "$candidate" ]; then
+                ZIP_URL="$candidate"
+                break
+              fi
+              count=$(echo "$resp" | jq '.artifacts | length')
+              if [ "$count" -lt 100 ]; then
+                break
+              fi
+              page=$((page+1))
+            done
+          fi
           if [ -z "$ZIP_URL" ]; then echo "No db-backup artifact found" >&2; exit 2; fi
-          echo "Downloading artifact"
+          echo "Downloading artifact from $ZIP_URL"
           curl -fS -H "Authorization: token $GITHUB_TOKEN" -L "$ZIP_URL" -o artifact.zip
           echo "Downloaded artifact.zip ($(stat -c%s artifact.zip) bytes)"
 
