@@ -1,6 +1,12 @@
 name: Restore latest DB backup to staging
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
+    inputs:
+      backup_artifact_run:
+        description: "Backup workflow run ID; leave empty to use the newest backup"
+        required: false
+        type: string
 
 jobs:
   restore:
@@ -17,7 +23,7 @@ jobs:
       - name: Download db-backup artifact (prefer specific run if provided)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BACKUP_ARTIFACT_RUN: 36042135603
+          BACKUP_ARTIFACT_RUN: ${{ inputs.backup_artifact_run }}
         run: |
           set -euo pipefail
           echo "Installing jq"
@@ -26,13 +32,13 @@ jobs:
           if [ -n "${BACKUP_ARTIFACT_RUN:-}" ]; then
             echo "Looking for artifact in run $BACKUP_ARTIFACT_RUN"
             resp=$(curl -fS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$BACKUP_ARTIFACT_RUN/artifacts")
-            ZIP_URL=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-"))) | if length==0 then "" else (.[0].archive_download_url) end')
+            ZIP_URL=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-package-") or startswith("db-backup-"))) | if length==0 then "" else (sort_by(.created_at) | last | .archive_download_url) end')
           else
             echo "Listing artifacts via GitHub API (paginated)"
             page=1
             while :; do
               resp=$(curl -fS -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100&page=$page")
-              candidate=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-"))) | if length==0 then "" else (max_by(.created_at) | .archive_download_url) end')
+              candidate=$(echo "$resp" | jq -r '.artifacts | map(select(.name|startswith("db-backup-package-") or startswith("db-backup-"))) | if length==0 then "" else (max_by(.created_at) | .archive_download_url) end')
               if [ -n "$candidate" ]; then
                 ZIP_URL="$candidate"
                 break
@@ -60,6 +66,12 @@ jobs:
             exit 1
           fi
           unzip -o artifact.zip -d "$tmpdir"
+          if find "$tmpdir" -maxdepth 1 -type f -name '*.tgz' | grep -q .; then
+            package=$(find "$tmpdir" -maxdepth 1 -type f -name '*.tgz' | head -n 1)
+            mkdir "$tmpdir/package"
+            tar -xzf "$package" -C "$tmpdir/package"
+            cp -a "$tmpdir/package/." "$tmpdir/"
+          fi
           # move supported files into workspace: v2, v1 and its hmac
           moved=false
           if [ -f "$tmpdir/backup.dump.v2.enc" ]; then
