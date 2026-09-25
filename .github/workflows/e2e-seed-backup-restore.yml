@@ -39,9 +39,14 @@ jobs:
           CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, sku TEXT UNIQUE, name TEXT);
           INSERT INTO users (email,name) SELECT md5(random()::text || clock_timestamp()::text) || '@example.com', 'seed' FROM generate_series(1,5) ON CONFLICT DO NOTHING;
           INSERT INTO products (sku,name) SELECT 'SKU-' || substr(md5(random()::text),1,8), 'Product' FROM generate_series(1,5) ON CONFLICT DO NOTHING;
-          SELECT 'users_count', count(*) FROM users;
-          SELECT 'products_count', count(*) FROM products;
-SQL
+          SQL
+          echo "Querying counts and writing workflow-metadata.txt..."
+          users_cnt=$(psql "$DATABASE_URL" -t -c "SELECT count(*) FROM users;" | tr -d '[:space:]')
+          products_cnt=$(psql "$DATABASE_URL" -t -c "SELECT count(*) FROM products;" | tr -d '[:space:]')
+          echo "users_count=$users_cnt" > workflow-metadata.txt
+          echo "products_count=$products_cnt" >> workflow-metadata.txt
+          echo "users_count=$users_cnt products_count=$products_cnt"
+          if [ "${users_cnt:-0}" -lt 1 ] || [ "${products_cnt:-0}" -lt 1 ]; then echo "ERROR: Seed resulted in zero rows (users=$users_cnt products=$products_cnt)" >&2; exit 1; fi
 
       - name: Create dump
         env:
