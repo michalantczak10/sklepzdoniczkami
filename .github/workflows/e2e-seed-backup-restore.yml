@@ -135,7 +135,7 @@ jobs:
           if [ -z "$tables" ]; then echo "No public tables found" >&2; exit 2; fi
           any_nonzero=0
           for t in $tables; do
-            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$t\";" | tr -d '[:space:]' || echo "0")
+            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM public.\"$t\";" | tr -d '[:space:]' || echo "0")
             echo "$t: $cnt"
             if [ "$cnt" -gt 0 ]; then any_nonzero=1; fi
           done
@@ -147,7 +147,7 @@ jobs:
         run: |
           set -euo pipefail
           for tbl in users products; do
-            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$tbl\";" | tr -d '[:space:]' || echo "0")
+            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM public.\"$tbl\";" | tr -d '[:space:]' || echo "0")
             echo "$tbl -> $cnt"
             if [ "$cnt" -lt 1 ]; then echo "Assertion failed: $tbl has $cnt" >&2; exit 3; fi
           done
