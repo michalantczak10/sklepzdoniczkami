@@ -3,11 +3,14 @@ services:
     name: sklepzdoniczkami
     runtime: python
     plan: free
+    branch: main
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py rename_shop_label && python manage.py migrate --noinput
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true
+      - key: APP_ENV
+        value: production
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
@@ -25,6 +28,35 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
 
-# Database is hosted externally on Neon (https://neon.tech), not on Render,
-# to avoid the 90-day expiry of Render's free Postgres plan.
-# DATABASE_URL is set directly as a service env var and is not managed here.
+  - type: web
+    name: sklepzdoniczkami-staging
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py rename_shop_label && python manage.py migrate --noinput
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: APP_ENV
+        value: staging
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "sklepzdoniczkami-staging.onrender.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://sklepzdoniczkami-staging.onrender.com"
+      - key: SITE_NAME
+        value: "Sklepzdoniczkami Staging"
+      - key: DATABASE_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLIC_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+# Create separate Neon databases/branches for production and staging. Set each
+# service's DATABASE_URL to its own Neon connection string in the Render
+# dashboard; never point both services at the same database.

@@ -17,6 +17,7 @@ permissions:
 jobs:
   restore:
     runs-on: ubuntu-24.04
+    environment: staging
     steps:
       - name: Install tools
         run: |
@@ -157,10 +158,23 @@ jobs:
 
       - name: Restore to staging (container or host pg_restore)
         env:
+          DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION || secrets.DATABASE_URL }}
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
           set -euo pipefail
           if [ -z "$DATABASE_URL_STAGING" ]; then echo "DATABASE_URL_STAGING not set"; exit 1; fi
+          if [ -z "$DATABASE_URL_PRODUCTION" ]; then echo "DATABASE_URL production secret not set"; exit 1; fi
+          python3 - <<'PY'
+          import os
+          from urllib.parse import unquote, urlsplit
+
+          def database_target(name):
+              url = urlsplit(os.environ[name])
+              return (url.hostname or "").lower(), unquote(url.path).strip("/")
+
+          if database_target("DATABASE_URL_PRODUCTION") == database_target("DATABASE_URL_STAGING"):
+              raise SystemExit("Refusing to restore: staging and production resolve to the same database host and name.")
+          PY
           echo "Running pg_restore (container if docker available, otherwise host pg_restore)"
           # export the DB URL in the shell so it's not interpolated into the docker CLI args
           export DATABASE_URL="$DATABASE_URL_STAGING"
@@ -170,6 +184,37 @@ jobs:
             echo "docker not found, running pg_restore on host"
             pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump
           fi
+
+      - name: Anonymize customer data in staging
+        env:
+          DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL_STAGING" -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          UPDATE public.auth_user
+          SET username = 'staging-user-' || id,
+              email = 'staging-user-' || id || '@example.invalid',
+              first_name = 'Staging',
+              last_name = 'User',
+              password = '!';
+
+          UPDATE public.sklepzdoniczkami_order
+          SET first_name = 'Staging',
+              last_name = 'Customer',
+              email = 'staging-order-' || id || '@example.invalid',
+              phone = '',
+              address = 'Staging address',
+              city = 'Staging',
+              postal_code = '00000',
+              comments = '',
+              stripe_checkout_session_id = '',
+              stripe_payment_intent_id = '';
+
+          DELETE FROM public.django_admin_log;
+          DELETE FROM public.django_session;
+          COMMIT;
+          SQL
 
       - name: Sanity checks (list tables and row counts)
         env:
