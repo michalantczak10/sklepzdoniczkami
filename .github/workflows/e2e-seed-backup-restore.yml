@@ -8,6 +8,14 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
+      - name: Check required secrets
+        run: |
+          missing=0
+          for s in DATABASE_URL DATABASE_URL_STAGING BACKUP_ENCRYPTION_KEY BACKUP_HMAC_KEY GITHUB_TOKEN; do
+            if [ -z "${!s:-}" ]; then echo "MISSING_SECRET: $s"; missing=1; fi
+          done
+          if [ "$missing" -eq 1 ]; then echo "One or more required secrets are missing; failing early." >&2; exit 1; fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
