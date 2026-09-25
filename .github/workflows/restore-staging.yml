@@ -176,10 +176,17 @@ jobs:
           echo "Listing public tables and row counts (first 100 tables):"
           tables=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 100;" | awk '{gsub(/^[ \t]+|[ \t]+$/,"",$0); if($0!="") print $0}') || true
           if [ -z "$tables" ]; then echo "No public tables found or query failed"; exit 0; fi
+          any_nonzero=0
           for t in $tables; do
             echo "-- Table: $t --"
-            psql "$DATABASE_URL_STAGING" -c "SELECT count(*) AS rows FROM \"$t\";" || echo "failed to count $t"
+            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$t\";" | tr -d '[:space:]' || echo "0") || true
+            echo "rows: $cnt"
+            if [ "$cnt" -gt 0 ]; then any_nonzero=1; fi
           done
+          if [ "$any_nonzero" -ne 1 ]; then
+            echo "Sanity check failed: no public table contains rows" >&2
+            exit 2
+          fi
 
       - name: Cleanup
         if: always()
