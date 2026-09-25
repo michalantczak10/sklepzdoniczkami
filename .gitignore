@@ -18,6 +18,7 @@ playwright-report/
 
 # CI artifacts and temporary downloads
 artifacts/
+backup.dump*
+db-backup-files-*.tgz
 
 # local dev sqlite DB
-db.sqlite3
