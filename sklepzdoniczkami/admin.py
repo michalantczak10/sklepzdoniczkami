@@ -40,6 +40,16 @@ class OrderAdminForm(forms.ModelForm):
             and status != "cancelled"
         ):
             self.add_error("status", "Anulowanego zamówienia nie można ponownie otworzyć.")
+        if (
+            self.instance.pk
+            and self.instance.status == "cancelled"
+            and is_paid
+            and not self.instance.is_paid
+        ):
+            self.add_error(
+                "is_paid",
+                "Anulowanego zamówienia nie można opłacić bez jego ponownego otwarcia.",
+            )
         if self.instance.is_paid and status == "pending":
             self.add_error(
                 "status",
@@ -163,6 +173,19 @@ class OrderAdmin(admin.ModelAdmin):
                 obj.stripe_payment_intent_id = previous.stripe_payment_intent_id
                 obj.paid_at = previous.paid_at
                 obj.inventory_deducted = previous.inventory_deducted
+
+            if (
+                previous is not None
+                and previous.status == "cancelled"
+                and not previous.is_paid
+                and obj.is_paid
+            ):
+                messages.error(
+                    request,
+                    "Nie można opłacić anulowanego zamówienia.",
+                )
+                obj.is_paid = previous.is_paid
+                obj.status = previous.status
 
             if (
                 not state_changed

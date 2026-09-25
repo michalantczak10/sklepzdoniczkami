@@ -12,7 +12,7 @@ from django.core import signing
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from .admin import OrderAdmin, OrderItemInline
+from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -691,6 +691,26 @@ class ProductCatalogTests(TestCase):
         self.assertTrue(order.is_paid)
         self.assertEqual(order.status, "paid")
         self.assertEqual(order.stripe_payment_intent_id, "pi_test_admin_race")
+
+    def test_admin_cannot_mark_cancelled_order_as_paid(self):
+        order = Order.objects.create(
+            first_name="Anna",
+            last_name="Kowalska",
+            email="anna@example.com",
+            address="ul. Testowa 1",
+            city="Warszawa",
+            postal_code="00-001",
+            payment_method="transfer",
+            status="cancelled",
+        )
+
+        form = OrderAdminForm(
+            data={"status": "cancelled", "is_paid": "on"},
+            instance=order,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("is_paid", form.errors)
 
     @patch("sklepzdoniczkami.views.stripe.Webhook.construct_event")
     def test_completed_stripe_session_does_not_pay_cancelled_order(self, mock_construct_event):
