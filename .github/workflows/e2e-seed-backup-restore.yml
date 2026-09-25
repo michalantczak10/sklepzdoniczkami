@@ -40,7 +40,7 @@ jobs:
         run: |
           set -x
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client docker.io openssl jq tar
+          sudo apt-get install -y postgresql-client openssl jq tar unzip
 
       - name: Seed random data
         env:
@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Creating dump..."
-          docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
+          docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
           if [ ! -s backup.dump ]; then echo "ERROR: backup.dump empty" >&2; exit 1; fi
 
       - name: Encrypt + HMAC
@@ -135,7 +135,7 @@ jobs:
           if [ -z "$tables" ]; then echo "No public tables found" >&2; exit 2; fi
           any_nonzero=0
           for t in $tables; do
-            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$t\";" | tr -d '[:space:]' || echo "0")
+            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM public.\"$t\";" | tr -d '[:space:]' || echo "0")
             echo "$t: $cnt"
             if [ "$cnt" -gt 0 ]; then any_nonzero=1; fi
           done
@@ -147,7 +147,7 @@ jobs:
         run: |
           set -euo pipefail
           for tbl in users products; do
-            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$tbl\";" | tr -d '[:space:]' || echo "0")
+            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM public.\"$tbl\";" | tr -d '[:space:]' || echo "0")
             echo "$tbl -> $cnt"
             if [ "$cnt" -lt 1 ]; then echo "Assertion failed: $tbl has $cnt" >&2; exit 3; fi
           done
