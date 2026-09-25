@@ -182,6 +182,16 @@ Po uruchomieniu projektu można rozwijać dalej takie elementy jak:
 
 ## Procedura testowego restore bazy (staging)
 
+Aby włączyć upload do S3 z workflow db-backup.yml, ustaw w repo Secrets:
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+- BACKUP_S3_BUCKET
+- (opcjonalnie) AWS_REGION
+
+Workflow prześle paczkę tylko gdy te sekrety będą ustawione.
+
+## Procedura testowego restore bazy (staging)
+
 ### Synchronizacja po przepisywaniu historii (force-push)
 
 Jeśli repo przeszło przepisywanie historii (np. usunięto wrażliwe pliki), każdy współpracownik powinien zsynchronizować lokalne kopie:

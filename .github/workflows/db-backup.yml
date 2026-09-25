@@ -90,6 +90,20 @@ jobs:
           name: db-backup-package-${{ github.run_id }}.tgz
           path: db-backup-files-${{ github.run_id }}.tgz
 
+      - name: Optional: upload to S3 (if AWS secrets provided)
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.BACKUP_S3_BUCKET }}
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          AWS_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+        run: |
+          echo "AWS credentials present — uploading package to s3://$AWS_S3_BUCKET/"
+          sudo apt-get update -y && sudo apt-get install -y awscli
+          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}"
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          aws configure set region "$AWS_REGION"
+          aws s3 cp db-backup-files-${{ github.run_id }}.tgz s3://$AWS_S3_BUCKET/db-backup-files-${{ github.run_id }}.tgz --acl private
+          echo "Uploaded to s3://$AWS_S3_BUCKET/db-backup-files-${{ github.run_id }}.tgz"
+
       - name: Cleanup
         run: |
           echo "Cleaning up local files"
