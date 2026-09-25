@@ -188,6 +188,26 @@ jobs:
             exit 2
           fi
 
+      - name: Table-specific assertions (users>=1, products>=1)
+        env:
+          DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL_STAGING:-}" ]; then echo "DATABASE_URL_STAGING not set; skipping table assertions"; exit 0; fi
+          declare -A expectations=( [users]=1 [products]=1 )
+          for tbl in "${!expectations[@]}"; do
+            min=${expectations[$tbl]}
+            echo "Asserting table $tbl has at least $min rows"
+            # allow missing table to fail the assertion
+            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$tbl\";" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ -z "$cnt" ]; then cnt=0; fi
+            echo "found $cnt rows in $tbl"
+            if [ "$cnt" -lt "$min" ]; then
+              echo "Assertion failed: $tbl has $cnt rows, expected >= $min" >&2
+              exit 3
+            fi
+          done
+
       - name: Cleanup
         if: always()
         run: |
