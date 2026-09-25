@@ -182,6 +182,28 @@ Po uruchomieniu projektu można rozwijać dalej takie elementy jak:
 
 ## Procedura testowego restore bazy (staging)
 
+### Synchronizacja po przepisywaniu historii (force-push)
+
+Jeśli repo przeszło przepisywanie historii (np. usunięto wrażliwe pliki), każdy współpracownik powinien zsynchronizować lokalne kopie:
+
+1. Zachowaj lokalne zmiany (opcjonalnie):
+
+```bash
+git branch save-local-$(date +%s)
+# lub stwórz patch
+git format-patch origin/main..HEAD
+```
+
+2. Zsynchronizuj z nowym origin:
+
+```bash
+git fetch origin
+git reset --hard origin/main
+```
+
+Uwaga: `git reset --hard` usunie lokalne, niezacommitowane zmiany. Jeśli masz pracę, zachowaj ją przed resetem.
+
+
 Krótka instrukcja jak przetestować przywracanie backupu do staging i sprawdzić integralność:
 
 
