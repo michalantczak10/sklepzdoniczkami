@@ -167,6 +167,20 @@ jobs:
             pg_restore --verbose --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backup.dump
           fi
 
+      - name: Sanity checks (list tables and row counts)
+        env:
+          DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL_STAGING:-}" ]; then echo "DATABASE_URL_STAGING not set; skipping sanity checks"; exit 0; fi
+          echo "Listing public tables and row counts (first 100 tables):"
+          tables=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 100;" | awk '{gsub(/^[ \t]+|[ \t]+$/,"",$0); if($0!="") print $0}') || true
+          if [ -z "$tables" ]; then echo "No public tables found or query failed"; exit 0; fi
+          for t in $tables; do
+            echo "-- Table: $t --"
+            psql "$DATABASE_URL_STAGING" -c "SELECT count(*) AS rows FROM \"$t\";" || echo "failed to count $t"
+          done
+
       - name: Cleanup
         if: always()
         run: |
