@@ -36,7 +36,7 @@ jobs:
           INSERT INTO products (sku, name) VALUES ('SEED-001','Seed Product') ON CONFLICT (sku) DO NOTHING;
           SELECT 'Inserted users:' as tag, count(*) FROM users;
           SELECT 'Inserted products:' as tag, count(*) FROM products;
-SQL
+          SQL
 
       - name: Report
         run: echo "Seeding complete"
