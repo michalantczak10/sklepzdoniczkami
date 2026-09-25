@@ -69,6 +69,7 @@ class Order(models.Model):
     shipping_method = models.CharField(max_length=30, choices=SHIPPING_CHOICES, default="courier")
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_paid = models.BooleanField(default=False)
+    inventory_deducted = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     stripe_checkout_session_id = models.CharField(max_length=255, blank=True, default="")
     stripe_payment_intent_id = models.CharField(max_length=255, blank=True, default="")
