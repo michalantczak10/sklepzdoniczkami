@@ -11,8 +11,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Debug info
+        run: |
+          set -x
+          echo "Runner info:"
+          uname -a || true
+          lsb_release -a 2>/dev/null || cat /etc/os-release || true
+          echo "Docker version:"; docker --version || true
+          echo "psql version:"; psql --version || true
+          echo "openssl version:"; openssl version || true
+
       - name: Install tools
         run: |
+          set -x
           sudo apt-get update -y
           sudo apt-get install -y postgresql-client docker.io openssl jq tar
 
