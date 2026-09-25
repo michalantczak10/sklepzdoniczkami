@@ -1,119 +1,68 @@
-name: Daily Encrypted Database Backup
+name: Daily encrypted database backup
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *' # daily at 02:00 UTC
+    - cron: "0 2 * * *"
 
 jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y docker.io openssl || true
-
-      - name: Dump Postgres database (custom format)
+      - name: Check required secrets
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          echo "Creating dump using postgres:18 docker image..."
-          docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
-
-      - name: Encrypt dump and compute HMAC (v1) and create AES-GCM (v2)
-        env:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
-          echo "Encrypting dump..."
-          set -o pipefail
-          if [ ! -f backup.dump ]; then echo "ERROR: backup.dump not found"; ls -la; exit 1; fi
-          if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then echo "BACKUP_ENCRYPTION_KEY not set" >&2; exit 1; fi
-          # v1: AES-CBC + HMAC (backward-compatible)
-          openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_ENCRYPTION_KEY
-          echo "Encrypted file size:"; ls -lh backup.dump.enc || true
-          if [ -z "${BACKUP_HMAC_KEY:-}" ]; then echo "BACKUP_HMAC_KEY not set" >&2; exit 1; fi
-          # compute HMAC using raw key decoded from base64 BACKUP_HMAC_KEY
-          key_hex=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
-          openssl dgst -sha256 -mac HMAC -macopt hexkey:$key_hex -binary backup.dump.enc | xxd -p -c 256 > backup.dump.enc.hmac
-          echo "HMAC written to backup.dump.enc.hmac (size: $(wc -c < backup.dump.enc.hmac) bytes)"
-          # verify hmac non-empty
-          if [ ! -s backup.dump.enc.hmac ]; then echo "ERROR: backup.dump.enc.hmac is empty"; ls -la; exit 1; fi
-          # record short key identifier (first 8 hex chars of sha256(key)) to help restore pick matching artifact
-          key_id=$(echo -n "$BACKUP_HMAC_KEY" | base64 -d | openssl dgst -sha256 -hex | awk '{print $2}' | cut -c1-8)
-          echo "$key_id" > backup.hmac.keyid
-          if [ ! -s backup.hmac.keyid ]; then echo "ERROR: failed to write backup.hmac.keyid"; ls -la; exit 1; fi
-          echo "Wrote key id: $(cat backup.hmac.keyid)"
-          # duplicate keyid into a file with different name to ensure artifact picks it up
-          cp backup.hmac.keyid backup.dump.enc.keyid || true
-          echo "keyid-copied" > workflow-metadata.txt || true
-          echo "backup_hmac_keyid=$(cat backup.hmac.keyid)" >> workflow-metadata.txt || true
-          echo "Wrote workflow-metadata.txt contents:"; cat workflow-metadata.txt || true
-          # v2: AES-GCM AEAD (preferred). Note: requires openssl with AES-GCM support on runner.
-          openssl enc -aes-256-gcm -pbkdf2 -salt -in backup.dump -out backup.dump.v2.enc -pass env:BACKUP_ENCRYPTION_KEY || true
-          if [ -f backup.dump.v2.enc ]; then echo "Created AES-GCM v2 encrypted file"; ls -lh backup.dump.v2.enc || true; fi
+          set -euo pipefail
+          for name in DATABASE_URL BACKUP_ENCRYPTION_KEY BACKUP_HMAC_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "$name secret is required" >&2
+              exit 1
+            fi
+          done
 
-      - name: Verify files exist
+      - name: Dump and encrypt database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
-          echo "Checking encrypted files..."
-          # at least one format must exist
-          if [ -f backup.dump.v2.enc ]; then echo "OK: v2 AES-GCM present"; ls -lh backup.dump.v2.enc; elif [ -f backup.dump.enc ] && [ -f backup.dump.enc.hmac ]; then echo "OK: v1 AES-CBC+HMAC present"; ls -lh backup.dump.enc backup.dump.enc.hmac; else echo "ERROR: no encrypted backup produced"; ls -la; exit 1; fi
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env DATABASE_URL \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work \
+            postgres:18 sh -euc \
+            'pg_dump --dbname="$DATABASE_URL" --format=custom --file=backup.dump'
 
-      - name: Debug before upload (show keyid/hmac)
-        run: |
-          echo "=== Debug: listing current directory ==="
-          ls -la || true
-          echo "=== Check backup.hmac.keyid ==="
-          if [ -f backup.hmac.keyid ]; then echo "backup.hmac.keyid exists:"; cat backup.hmac.keyid; else echo "backup.hmac.keyid MISSING"; fi
-          stat --printf="keyid: %s bytes\n" backup.hmac.keyid 2>/dev/null || true
-          echo "=== Check backup.dump.enc.hmac ==="
-          if [ -f backup.dump.enc.hmac ]; then echo "backup.dump.enc.hmac size:"; wc -c backup.dump.enc.hmac; echo "contents:"; cat backup.dump.enc.hmac; else echo "backup.dump.enc.hmac MISSING"; fi
-          echo "=== Recursive ls ==="
-          ls -R || true
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in backup.dump -out backup.dump.enc \
+            -pass env:BACKUP_ENCRYPTION_KEY
 
-      - name: Package all backup files into tarball
-        run: |
-          echo "Packaging backup files into a single tarball to ensure metadata persists"
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          # copy files into workspace root explicitly
-          cp -v backup.dump.enc* backup.dump.v2.enc* backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt "$GITHUB_WORKSPACE/" || true
-          ls -la "$GITHUB_WORKSPACE" || true
-          # also create a copy of the encrypted file with keyid in its name to force metadata presence
-          if [ -f backup.hmac.keyid ]; then keyid=$(cat backup.hmac.keyid); cp -v backup.dump.enc "$GITHUB_WORKSPACE/backup.dump.enc.${keyid}" || true; echo "Created backup.dump.enc.${keyid}"; fi
-          tar czf "$GITHUB_WORKSPACE/db-backup-files-${{ github.run_id }}.tgz" -C "$GITHUB_WORKSPACE" --ignore-failed-read backup.dump.v2.enc backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt backup.dump.enc.${keyid} || true
-          echo "Tarball size:"; ls -lh "$GITHUB_WORKSPACE/db-backup-files-${{ github.run_id }}.tgz" || true
+          key_hex=$(printf '%s' "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
+          openssl dgst -sha256 -mac HMAC -macopt "hexkey:$key_hex" \
+            -binary backup.dump.enc | xxd -p -c 256 > backup.dump.enc.hmac
+          printf '%s' "$BACKUP_HMAC_KEY" | base64 -d |
+            openssl dgst -sha256 -hex | awk '{print substr($2, 1, 8)}' \
+            > backup.hmac.keyid
 
-      - name: Upload packaged artifact
+          tar czf "$GITHUB_WORKSPACE/db-backup-files-${GITHUB_RUN_ID}.tgz" \
+            -C "$GITHUB_WORKSPACE" \
+            backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid
+
+      - name: Upload encrypted backup
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-package-${{ github.run_id }}.tgz
           path: db-backup-files-${{ github.run_id }}.tgz
+          retention-days: 90
 
-
-      - name: Notify Slack on failure (optional)
-        if: failure() && env.SLACK_WEBHOOK
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL || '' }}
+      - name: Remove temporary backup files
+        if: always()
         run: |
-          if [ -n "$SLACK_WEBHOOK" ]; then
-            payload="{ \"text\": \"Backup job failed for repo $GITHUB_REPOSITORY (run $GITHUB_RUN_ID). Check Actions logs.\" }"
-            curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" || true
-          else
-            echo "No SLACK_WEBHOOK configured; skipping notification"
-          fi
-
-      - name: Cleanup
-        run: |
-          echo "Cleaning up local files"
-          shred -u backup.dump || rm -f backup.dump
-          shred -u backup.dump.enc || rm -f backup.dump.enc
-          shred -u backup.dump.enc.hmac || rm -f backup.dump.enc.hmac
-          shred -u backup.dump.v2.enc || rm -f backup.dump.v2.enc
-          # remove generated metadata and packaged tarball
-          rm -f backup.hmac.keyid backup.dump.enc.keyid workflow-metadata.txt || true
-          rm -f db-backup-files-*.tgz || true
-          # also remove any copies in GITHUB_WORKSPACE
-          if [ -n "${GITHUB_WORKSPACE:-}" ] && [ -d "$GITHUB_WORKSPACE" ]; then
-            rm -f "$GITHUB_WORKSPACE/backup.hmac.keyid" "$GITHUB_WORKSPACE/backup.dump.enc.*" "$GITHUB_WORKSPACE/db-backup-files-*.tgz" || true
-          fi
+          shred -u backup.dump 2>/dev/null || rm -f backup.dump
+          rm -f backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid
+          rm -f "db-backup-files-${GITHUB_RUN_ID}.tgz"
