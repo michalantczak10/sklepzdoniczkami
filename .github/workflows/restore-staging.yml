@@ -176,14 +176,16 @@ jobs:
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
           set -euo pipefail
-          if [ -z "${DATABASE_URL_STAGING:-}" ]; then echo "DATABASE_URL_STAGING not set; skipping sanity checks"; exit 0; fi
           echo "Listing public tables and row counts (first 100 tables):"
-          tables=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 100;" | awk '{gsub(/^[ \t]+|[ \t]+$/,"",$0); if($0!="") print $0}') || true
-          if [ -z "$tables" ]; then echo "No public tables found or query failed"; exit 0; fi
+          tables=$(psql "$DATABASE_URL_STAGING" -v ON_ERROR_STOP=1 -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename LIMIT 100;" | awk '{gsub(/^[ \t]+|[ \t]+$/,"",$0); if($0!="") print $0}')
+          if [ -z "$tables" ]; then
+            echo "No public tables found after restore" >&2
+            exit 1
+          fi
           any_nonzero=0
           for t in $tables; do
             echo "-- Table: $t --"
-            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$t\";" | tr -d '[:space:]' || echo "0") || true
+            cnt=$(psql "$DATABASE_URL_STAGING" -v ON_ERROR_STOP=1 -t -c "SELECT count(*) FROM public.\"$t\";" | tr -d '[:space:]')
             echo "rows: $cnt"
             if [ "$cnt" -gt 0 ]; then any_nonzero=1; fi
           done
@@ -192,19 +194,16 @@ jobs:
             exit 2
           fi
 
-      - name: Table-specific assertions (users>=1, products>=1)
+      - name: Table-specific assertions (Django user and product)
         env:
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
           set -euo pipefail
-          if [ -z "${DATABASE_URL_STAGING:-}" ]; then echo "DATABASE_URL_STAGING not set; skipping table assertions"; exit 0; fi
-          declare -A expectations=( [users]=1 [products]=1 )
+          declare -A expectations=( [auth_user]=1 [sklepzdoniczkami_product]=1 )
           for tbl in "${!expectations[@]}"; do
             min=${expectations[$tbl]}
             echo "Asserting table $tbl has at least $min rows"
-            # allow missing table to fail the assertion
-            cnt=$(psql "$DATABASE_URL_STAGING" -t -c "SELECT count(*) FROM \"$tbl\";" 2>/dev/null | tr -d '[:space:]' || echo "0")
-            if [ -z "$cnt" ]; then cnt=0; fi
+            cnt=$(psql "$DATABASE_URL_STAGING" -v ON_ERROR_STOP=1 -t -c "SELECT count(*) FROM public.\"$tbl\";" | tr -d '[:space:]')
             echo "found $cnt rows in $tbl"
             if [ "$cnt" -lt "$min" ]; then
               echo "Assertion failed: $tbl has $cnt rows, expected >= $min" >&2
