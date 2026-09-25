@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Creating dump..."
-          docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
+          docker run --rm --user "$(id -u):$(id -g)" -v "$GITHUB_WORKSPACE":/work -w /work postgres:18 pg_dump --dbname="$DATABASE_URL" -Fc -f backup.dump
           if [ ! -s backup.dump ]; then echo "ERROR: backup.dump empty" >&2; exit 1; fi
 
       - name: Encrypt + HMAC
