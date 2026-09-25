@@ -40,7 +40,7 @@ jobs:
         run: |
           set -x
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client docker.io openssl jq tar
+          sudo apt-get install -y postgresql-client openssl jq tar unzip
 
       - name: Seed random data
         env:
