@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 
 import stripe
 from django.conf import settings
@@ -17,10 +18,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, ListView
 
 from .models import Category, Order, OrderItem, Product
+from .services import cancel_order_and_release_inventory, reserve_order_inventory
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 ORDER_ACCESS_SALT = "sklepzdoniczkami.order-access"
 ORDER_ACCESS_TOKEN_MAX_AGE = 30 * 24 * 60 * 60
+logger = logging.getLogger(__name__)
 
 
 def make_order_access_token(order):
@@ -137,6 +140,9 @@ def add_to_cart(request, product_id):
     if not product:
         messages.error(request, "Produkt nie istnieje lub jest niedostępny.")
         return redirect("sklepzdoniczkami:products")
+    if product.stock < 1:
+        messages.error(request, "Produkt jest obecnie niedostępny.")
+        return redirect("sklepzdoniczkami:products")
 
     cart = get_cart(request)
     cart[str(product.id)] = cart.get(str(product.id), 0) + 1
@@ -182,49 +188,82 @@ def checkout_view(request):
         comments = request.POST.get("comments", "").strip()
         payment_method = request.POST.get("payment_method", "transfer")
         shipping_method = request.POST.get("shipping_method", "courier")
-        shipping_cost = shipping_costs.get(shipping_method, Decimal("0.00"))
+        payment_methods = {choice[0] for choice in Order.PAYMENT_CHOICES}
 
         if not all([first_name, last_name, email, address, city, postal_code]):
             messages.error(request, "Wypełnij wszystkie wymagane pola.")
+        elif payment_method not in payment_methods or shipping_method not in shipping_costs:
+            messages.error(request, "Wybrano nieprawidłową metodę płatności lub dostawy.")
+        elif payment_method == "card" and not settings.STRIPE_SECRET_KEY:
+            messages.error(request, "Płatności kartą nie są obecnie dostępne.")
         else:
-            order = Order.objects.create(
-                user=request.user if request.user.is_authenticated else None,
-                first_name=first_name,
-                last_name=last_name,
-                email=email,
-                phone=phone,
-                address=address,
-                city=city,
-                postal_code=postal_code,
-                comments=comments,
-                payment_method=payment_method,
-                shipping_method=shipping_method,
-                shipping_cost=shipping_cost,
-                is_paid=False,
-                status="pending",
-            )
-            for item in items:
-                OrderItem.objects.create(
-                    order=order,
-                    product=item["product"],
-                    quantity=item["quantity"],
-                    unit_price=item["product"].price,
-                )
+            shipping_cost = shipping_costs[shipping_method]
+            with transaction.atomic():
+                product_ids = [item["product"].pk for item in items]
+                locked_products = {
+                    product.pk: product
+                    for product in Product.objects.select_for_update()
+                    .filter(pk__in=product_ids, is_active=True)
+                    .order_by("pk")
+                }
+                unavailable = [
+                    item["product"].name
+                    for item in items
+                    if item["product"].pk not in locked_products
+                    or item["quantity"] > locked_products[item["product"].pk].stock
+                ]
 
-            order_token = make_order_access_token(order)
-            if payment_method == "card":
-                # Stripe session is created after the order exists.
+                if unavailable:
+                    messages.error(
+                        request,
+                        "Brak wystarczającej liczby produktów: "
+                        + ", ".join(unavailable)
+                        + ". Zaktualizuj koszyk.",
+                    )
+                    order = None
+                else:
+                    order = Order.objects.create(
+                        user=request.user if request.user.is_authenticated else None,
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email,
+                        phone=phone,
+                        address=address,
+                        city=city,
+                        postal_code=postal_code,
+                        comments=comments,
+                        payment_method=payment_method,
+                        shipping_method=shipping_method,
+                        shipping_cost=shipping_cost,
+                        is_paid=False,
+                        status="pending",
+                        inventory_deducted=True,
+                    )
+                    for item in items:
+                        product = locked_products[item["product"].pk]
+                        product.stock -= item["quantity"]
+                        product.save(update_fields=["stock"])
+                        OrderItem.objects.create(
+                            order=order,
+                            product=product,
+                            quantity=item["quantity"],
+                            unit_price=product.price,
+                        )
+
+            if order is not None:
+                order_token = make_order_access_token(order)
+                if payment_method == "card":
+                    return redirect(
+                        "sklepzdoniczkami:stripe_checkout",
+                        order_token=order_token,
+                    )
+
+                request.session["cart"] = {}
+                request.session.modified = True
                 return redirect(
-                    "sklepzdoniczkami:stripe_checkout",
+                    "sklepzdoniczkami:checkout_success",
                     order_token=order_token,
                 )
-
-            request.session["cart"] = {}
-            request.session.modified = True
-            return redirect(
-                "sklepzdoniczkami:checkout_success",
-                order_token=order_token,
-            )
 
     context = {
         "items": items,
@@ -264,28 +303,104 @@ def stripe_checkout(request, order_token):
             "quantity": 1,
         })
 
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        line_items=line_items,
-        mode="payment",
-        success_url=request.build_absolute_uri(
+    session_params = {
+        "payment_method_types": ["card"],
+        "line_items": line_items,
+        "mode": "payment",
+        "success_url": request.build_absolute_uri(
             reverse(
                 "sklepzdoniczkami:payment_success",
                 kwargs={"order_token": order_token},
             )
         ) + "?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url=request.build_absolute_uri(
+        "cancel_url": request.build_absolute_uri(
             reverse(
                 "sklepzdoniczkami:payment_cancel",
                 kwargs={"order_token": order_token},
             )
         ),
-        customer_email=order.email,
-        metadata={"order_id": str(order.id)},
-        idempotency_key=f"checkout-order-{order.pk}",
-    )
-    order.stripe_checkout_session_id = session.id
-    order.save(update_fields=["stripe_checkout_session_id"])
+        "customer_email": order.email,
+        "metadata": {"order_id": str(order.id)},
+        "idempotency_key": f"checkout-order-{order.pk}",
+    }
+    session = None
+    for attempt in range(2):
+        try:
+            session = stripe.checkout.Session.create(**session_params)
+            break
+        except stripe.error.StripeError as exc:
+            if isinstance(
+                exc,
+                (
+                    stripe.error.AuthenticationError,
+                    stripe.error.PermissionError,
+                    stripe.error.InvalidRequestError,
+                ),
+            ) and getattr(exc, "code", None) != "idempotency_key_in_use":
+                cancel_order_and_release_inventory(order)
+                messages.error(
+                    request,
+                    "Nie udało się utworzyć płatności. Zamówienie anulowano; spróbuj ponownie.",
+                )
+                return redirect("sklepzdoniczkami:checkout")
+            if attempt == 0:
+                logger.warning(
+                    "Retrying Stripe checkout creation for order %s with the same idempotency key",
+                    order.pk,
+                )
+                continue
+            logger.exception(
+                "Stripe checkout creation failed for order %s; keeping its stock reservation",
+                order.pk,
+            )
+            messages.error(
+                request,
+                "Nie udało się potwierdzić wyniku tworzenia płatności. "
+                "Zapas zamówienia pozostaje zarezerwowany; spróbuj ponownie później.",
+            )
+            return redirect("sklepzdoniczkami:checkout")
+
+    if session is None:
+        raise RuntimeError("Stripe checkout session creation ended without a result")
+
+    with transaction.atomic():
+        order = Order.objects.select_for_update().get(pk=order.pk)
+        if order.is_paid:
+            return redirect(
+                "sklepzdoniczkami:checkout_success",
+                order_token=order_token,
+            )
+        if order.status != "pending":
+            active_order = False
+        else:
+            order.stripe_checkout_session_id = session.id
+            order.save(update_fields=["stripe_checkout_session_id"])
+            active_order = True
+
+    if not active_order:
+        try:
+            stripe.checkout.Session.expire(session.id)
+        except stripe.error.StripeError:
+            try:
+                current_session = stripe.checkout.Session.retrieve(session.id)
+            except stripe.error.StripeError:
+                logger.exception(
+                    "Could not confirm Stripe session state for cancelled order %s",
+                    order.pk,
+                )
+            else:
+                if current_session.status == "complete":
+                    logger.error(
+                        "Stripe session %s completed after order %s was cancelled",
+                        session.id,
+                        order.pk,
+                    )
+        messages.error(
+            request,
+            "Zamówienie zostało anulowane i nie można kontynuować płatności.",
+        )
+        return redirect("sklepzdoniczkami:checkout")
+
     return redirect(session.url, permanent=False)
 
 
@@ -296,7 +411,13 @@ def payment_success(request, order_token):
     # Never trust the redirect alone: verify the checkout session with Stripe
     # before marking the order as paid. The webhook is the source of truth,
     # but this lets us reflect the paid state immediately for the user too.
-    if not order.is_paid and session_id and settings.STRIPE_SECRET_KEY:
+    if (
+        not order.is_paid
+        and order.status == "pending"
+        and order.inventory_deducted
+        and session_id
+        and settings.STRIPE_SECRET_KEY
+    ):
         try:
             session = stripe.checkout.Session.retrieve(session_id)
         except stripe.error.StripeError:
@@ -313,7 +434,11 @@ def payment_success(request, order_token):
                     order_token,
                     Order.objects.select_for_update(),
                 )
-                if not order.is_paid:
+                if (
+                    not order.is_paid
+                    and order.status == "pending"
+                    and order.inventory_deducted
+                ):
                     order.is_paid = True
                     order.status = "paid"
                     order.paid_at = timezone.now()
@@ -344,14 +469,65 @@ def payment_success(request, order_token):
 
 
 def payment_cancel(request, order_token):
+    order = get_order_from_access_token(order_token)
+    if not order.is_paid and order.status == "pending":
+        if order.payment_method != "card":
+            messages.error(request, "To zamówienie nie korzysta z płatności kartą.")
+            return redirect("sklepzdoniczkami:checkout")
+        if order.stripe_checkout_session_id:
+            if not settings.STRIPE_SECRET_KEY:
+                messages.error(
+                    request,
+                    "Nie można bezpiecznie anulować sesji płatności. "
+                    "Zapas produktu pozostaje zarezerwowany.",
+                )
+                return redirect("sklepzdoniczkami:checkout")
+            try:
+                stripe.checkout.Session.expire(order.stripe_checkout_session_id)
+            except stripe.error.StripeError:
+                try:
+                    session = stripe.checkout.Session.retrieve(
+                        order.stripe_checkout_session_id
+                    )
+                except stripe.error.StripeError:
+                    messages.error(
+                        request,
+                        "Nie udało się potwierdzić anulowania płatności. "
+                        "Zapas produktu pozostaje zarezerwowany.",
+                    )
+                    return redirect("sklepzdoniczkami:checkout")
+
+                if session.status == "complete" or session.payment_status == "paid":
+                    messages.info(
+                        request,
+                        "Płatność jest przetwarzana. Sprawdź status zamówienia za chwilę.",
+                    )
+                    return redirect(
+                        "sklepzdoniczkami:checkout_success",
+                        order_token=order_token,
+                    )
+                if session.status != "expired":
+                    messages.error(
+                        request,
+                        "Nie udało się anulować sesji płatności. "
+                        "Zapas produktu pozostaje zarezerwowany.",
+                    )
+                    return redirect("sklepzdoniczkami:checkout")
+        elif order.inventory_deducted:
+            messages.error(
+                request,
+                "Nie można potwierdzić sesji płatności. "
+                "Zapas produktu pozostaje zarezerwowany.",
+            )
+            return redirect("sklepzdoniczkami:checkout")
+
     with transaction.atomic():
         order = get_order_from_access_token(
             order_token,
             Order.objects.select_for_update(),
         )
         if not order.is_paid and order.status == "pending":
-            order.status = "cancelled"
-            order.save(update_fields=["status"])
+            cancel_order_and_release_inventory(order)
     messages.warning(request, "Płatność została anulowana. Możesz spróbować ponownie.")
     return redirect("sklepzdoniczkami:checkout")
 
@@ -372,21 +548,86 @@ def stripe_webhook(request):
         session = event["data"]["object"]
         order_id = getattr(getattr(session, "metadata", None), "order_id", None)
         if order_id:
+            should_refund = False
+            refund_payment_intent = None
             with transaction.atomic():
-                order = Order.objects.select_for_update().filter(pk=order_id).first()
-                if order and not order.is_paid:
-                    order.is_paid = True
-                    order.status = "paid"
-                    order.paid_at = timezone.now()
-                    order.stripe_payment_intent_id = session.payment_intent or ""
-                    order.save(
-                        update_fields=[
-                            "is_paid",
-                            "status",
-                            "paid_at",
-                            "stripe_payment_intent_id",
-                        ]
+                order = Order.objects.select_for_update().filter(
+                    pk=order_id,
+                    status="pending",
+                    is_paid=False,
+                ).filter(
+                    Q(stripe_checkout_session_id=session.id)
+                    | Q(stripe_checkout_session_id="")
+                ).first()
+                if order and session.payment_status == "paid":
+                    if (
+                        not order.inventory_deducted
+                        and not reserve_order_inventory(order)
+                    ):
+                        should_refund = True
+                        refund_payment_intent = session.payment_intent
+                    else:
+                        order.inventory_deducted = True
+                        order.is_paid = True
+                        order.status = "paid"
+                        order.stripe_checkout_session_id = session.id
+                        order.paid_at = timezone.now()
+                        order.stripe_payment_intent_id = session.payment_intent or ""
+                        order.save(
+                            update_fields=[
+                                "inventory_deducted",
+                                "is_paid",
+                                "status",
+                                "paid_at",
+                                "stripe_checkout_session_id",
+                                "stripe_payment_intent_id",
+                            ]
+                        )
+
+            if should_refund:
+                if not refund_payment_intent:
+                    logger.error(
+                        "Cannot refund unreserved order %s: Stripe session has no payment intent",
+                        order_id,
                     )
+                    return HttpResponse(status=500)
+                try:
+                    stripe.Refund.create(
+                        payment_intent=refund_payment_intent,
+                        idempotency_key=f"unreserved-order-refund-{order_id}",
+                    )
+                except stripe.error.StripeError:
+                    logger.exception(
+                        "Could not refund payment for unreserved order %s",
+                        order_id,
+                    )
+                    return HttpResponse(status=500)
+
+                with transaction.atomic():
+                    order = Order.objects.select_for_update().filter(
+                        pk=order_id,
+                        status="pending",
+                        is_paid=False,
+                        inventory_deducted=False,
+                    ).first()
+                    if order:
+                        order.status = "cancelled"
+                        order.save(update_fields=["status"])
+    elif event["type"] == "checkout.session.expired":
+        session = event["data"]["object"]
+        order_id = getattr(getattr(session, "metadata", None), "order_id", None)
+        if order_id:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().filter(
+                    pk=order_id,
+                    status="pending",
+                    is_paid=False,
+                ).filter(
+                    Q(stripe_checkout_session_id=session.id)
+                    | Q(stripe_checkout_session_id="")
+                ).first()
+                if order:
+                    cancel_order_and_release_inventory(order)
 
     return HttpResponse(status=200)
 
