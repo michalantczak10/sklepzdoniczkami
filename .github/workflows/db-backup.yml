@@ -8,10 +8,11 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Check required secrets
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION || secrets.DATABASE_URL }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
@@ -25,7 +26,7 @@ jobs:
 
       - name: Dump and encrypt database
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION || secrets.DATABASE_URL }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
         run: |
