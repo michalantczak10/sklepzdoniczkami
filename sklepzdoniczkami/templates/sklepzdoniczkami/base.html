@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="{% static 'sklepzdoniczkami/css/store.css' %}">
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Przejdź do treści</a>
     <div class="announcement">Rośliny i dodatki, które zamieniają dom w zieloną przestrzeń</div>
     <header class="topbar">
         <div class="container nav">
@@ -36,7 +37,7 @@
             </nav>
         </div>
     </header>
-    <main>
+    <main id="main-content">
         {% if messages %}
             <div class="container message-wrap">
                 <ul class="messages">
