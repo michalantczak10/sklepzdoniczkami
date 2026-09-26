@@ -16,7 +16,7 @@ services:
   db:
     image: postgres:18
     environment:
-      POSTGRES_DB: sklepzdoniczkami_dev
+      POSTGRES_DB: sklepzdoniczkami-dev
       POSTGRES_USER: sklepzdoniczkami
       POSTGRES_PASSWORD: sklepzdoniczkami_dev_pass
     volumes:
