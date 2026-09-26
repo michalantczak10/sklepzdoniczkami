@@ -68,6 +68,28 @@ class SampleProductCommandTests(TestCase):
             self.assertTrue(
                 all(product.image.startswith("/media/products/") for product in products)
             )
+            self.assertEqual(
+                {
+                    category.slug: category.products.filter(is_active=True).count()
+                    for category in Category.objects.filter(
+                        slug__in=("ceramiczne", "plastikowe", "cementowe")
+                    )
+                },
+                {"ceramiczne": 2, "plastikowe": 2, "cementowe": 1},
+            )
+
+            response = self.client.get(reverse("sklepzdoniczkami:products"))
+            self.assertContains(response, "Wybierz materiał")
+            self.assertContains(response, "Ceramiczne")
+            self.assertContains(response, "Plastikowe")
+            self.assertContains(response, "Cementowe")
+            self.assertContains(response, "2 pozycji")
+
+            plastic_category = Category.objects.get(slug="plastikowe")
+            filtered_response = self.client.get(plastic_category.get_absolute_url())
+            self.assertContains(filtered_response, "Kolorowy zestaw doniczek plastikowych")
+            self.assertContains(filtered_response, "Duża doniczka plastikowa ogrodowa")
+            self.assertNotContains(filtered_response, "Doniczka cementowa klasyczna")
 
     @override_settings(APP_ENV="preprod")
     def test_sample_products_command_refuses_to_run_outside_development(self):

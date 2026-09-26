@@ -9,46 +9,62 @@ from sklepzdoniczkami.models import Category, Product
 
 SAMPLE_PRODUCTS = (
     {
-        "name": "Doniczka terakotowa na podstawce",
-        "slug": "doniczka-terakotowa-na-podstawce",
-        "description": "Klasyczna doniczka z naturalnej terakoty z dopasowaną podstawką.",
+        "name": "Doniczka ceramiczna na podstawce",
+        "slug": "doniczka-ceramiczna-na-podstawce",
+        "legacy_slug": "doniczka-terakotowa-na-podstawce",
+        "description": "Klasyczna doniczka ceramiczna z dopasowaną podstawką.",
         "price": "39.90",
         "stock": 12,
-        "image": "pot-terracotta-2.jpg",
-    },
-    {
-        "name": "Zestaw doniczek z terakoty",
-        "slug": "zestaw-doniczek-z-terakoty",
-        "description": "Zestaw doniczek z terakoty w kilku praktycznych rozmiarach.",
-        "price": "59.90",
-        "stock": 8,
+        "category": "ceramiczne",
         "image": "pot-terracotta-1.jpg",
     },
     {
-        "name": "Doniczka gliniana klasyczna",
-        "slug": "doniczka-gliniana-klasyczna",
-        "description": "Ponadczasowa doniczka z gliny do domu lub na zadaszony taras.",
+        "name": "Kolorowy zestaw doniczek plastikowych",
+        "slug": "zestaw-doniczek-plastikowych",
+        "legacy_slug": "zestaw-doniczek-z-terakoty",
+        "description": "Lekkie doniczki w żywych kolorach, idealne na parapet i balkon.",
+        "price": "59.90",
+        "stock": 8,
+        "category": "plastikowe",
+        "image": "pot-plastic.jpg",
+    },
+    {
+        "name": "Doniczka cementowa klasyczna",
+        "slug": "doniczka-cementowa-klasyczna",
+        "legacy_slug": "doniczka-gliniana-klasyczna",
+        "description": "Prosta, stabilna forma o surowym charakterze do nowoczesnych wnętrz.",
         "price": "34.90",
         "stock": 10,
-        "image": "pot-terracotta-3.jpg",
+        "category": "cementowe",
+        "image": "pot-cement.jpg",
     },
     {
-        "name": "Doniczka terakotowa szeroka",
-        "slug": "doniczka-terakotowa-szeroka",
-        "description": "Szeroka forma z terakoty, która dobrze prezentuje się na parapecie.",
+        "name": "Doniczka ceramiczna szeroka",
+        "slug": "doniczka-ceramiczna-szeroka",
+        "legacy_slug": "doniczka-terakotowa-szeroka",
+        "description": "Szeroka, jasna forma ceramiczna, która dobrze prezentuje się na parapecie.",
         "price": "49.90",
         "stock": 6,
-        "image": "pot-terracotta-2.jpg",
+        "category": "ceramiczne",
+        "image": "pot-ceramic.jpg",
     },
     {
-        "name": "Duża doniczka ogrodowa",
-        "slug": "duza-doniczka-ogrodowa",
-        "description": "Pojemna doniczka do aranżacji balkonu, tarasu lub ogrodu.",
+        "name": "Duża doniczka plastikowa ogrodowa",
+        "slug": "duza-doniczka-plastikowa-ogrodowa",
+        "legacy_slug": "duza-doniczka-ogrodowa",
+        "description": "Lekka i pojemna doniczka do aranżacji balkonu, tarasu lub ogrodu.",
         "price": "89.00",
         "stock": 4,
-        "image": "pot-terracotta-3.jpg",
+        "category": "plastikowe",
+        "image": "pot-plastic.jpg",
     },
 )
+
+SAMPLE_CATEGORIES = {
+    "ceramiczne": "Ceramiczne",
+    "plastikowe": "Plastikowe",
+    "cementowe": "Cementowe",
+}
 
 
 class Command(BaseCommand):
@@ -68,21 +84,25 @@ class Command(BaseCommand):
                 raise CommandError(f"Sample product image is missing: {source}")
             shutil.copyfile(source, media_dir / filename)
 
-        category, _ = Category.objects.get_or_create(
-            slug="doniczki",
-            defaults={"name": "Doniczki"},
-        )
+        categories = {
+            slug: Category.objects.get_or_create(slug=slug, defaults={"name": name})[0]
+            for slug, name in SAMPLE_CATEGORIES.items()
+        }
         for sample in SAMPLE_PRODUCTS:
             product_data = sample.copy()
             image_name = product_data.pop("image")
+            category_slug = product_data.pop("category")
+            legacy_slug = product_data.pop("legacy_slug")
+            if legacy_slug != product_data["slug"]:
+                Product.objects.filter(slug=legacy_slug).update(slug=product_data["slug"])
             Product.objects.update_or_create(
                 slug=product_data["slug"],
                 defaults={
                     **product_data,
-                    "category": category,
+                    "category": categories[category_slug],
                     "image": f"{settings.MEDIA_URL}products/{image_name}",
                     "is_active": True,
                 },
             )
 
-        self.stdout.write(self.style.SUCCESS("Loaded five sample pot products."))
+        self.stdout.write(self.style.SUCCESS("Loaded five sample pot products in three material categories."))

@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core import signing
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -98,7 +98,39 @@ class ProductListView(ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_category"] = Category.objects.filter(slug=self.kwargs.get("slug")).first()
-        context["categories"] = Category.objects.filter(products__is_active=True).distinct().order_by("name")
+        categories = (
+            Category.objects.filter(products__is_active=True)
+            .annotate(product_count=Count("products", filter=Q(products__is_active=True)))
+            .distinct()
+            .order_by("name")
+        )
+        card_details = {
+            "ceramiczne": {
+                "image": "sklepzdoniczkami/img/products/pot-ceramic.jpg",
+                "description": "Szkliwione wykończenia i ponadczasowe kształty.",
+            },
+            "plastikowe": {
+                "image": "sklepzdoniczkami/img/products/pot-plastic.jpg",
+                "description": "Lekkie, praktyczne i dostępne w wielu kolorach.",
+            },
+            "cementowe": {
+                "image": "sklepzdoniczkami/img/products/pot-cement.jpg",
+                "description": "Proste formy o surowym, nowoczesnym charakterze.",
+            },
+        }
+        context["categories"] = categories
+        context["category_cards"] = [
+            {
+                "category": category,
+                "image": card_details.get(category.slug, {}).get(
+                    "image", "sklepzdoniczkami/img/products/pot-terracotta-1.jpg"
+                ),
+                "description": card_details.get(
+                    category.slug, {}
+                ).get("description", "Poznaj doniczki z tej kolekcji."),
+            }
+            for category in categories
+        ]
         context["search_query"] = self.request.GET.get("q", "")
         return context
 
