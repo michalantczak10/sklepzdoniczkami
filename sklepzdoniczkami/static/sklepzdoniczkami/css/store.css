@@ -234,3 +234,8 @@ td { font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* Skip link for keyboard users */
+.skip-link { position: absolute; left: -999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.skip-link:focus, .skip-link:active { left: 12px; top: 12px; width: auto; height: auto; padding: 8px 12px; background: var(--green); color: white; z-index: 1000; border-radius: 4px; font-weight: 700; }
+
