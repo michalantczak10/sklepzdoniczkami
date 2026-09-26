@@ -1,0 +1,80 @@
+[
+  {
+    "model": "sklepzdoniczkami.category",
+    "pk": 1,
+    "fields": {
+      "name": "Doniczki",
+      "slug": "doniczki"
+    }
+  },
+  {
+    "model": "sklepzdoniczkami.product",
+    "pk": 1,
+    "fields": {
+      "category": 1,
+      "name": "Doniczka Ceramiczna Płytka",
+      "slug": "doniczka-ceramiczna-plytka",
+      "description": "Klasyczna ceramiczna doniczka, idealna do małych roślin i ziół.",
+      "price": "29.90",
+      "stock": 12,
+      "is_active": true,
+      "image": "/media/products/plant-1.svg"
+    }
+  },
+  {
+    "model": "sklepzdoniczkami.product",
+    "pk": 2,
+    "fields": {
+      "category": 1,
+      "name": "Doniczka Betonowa Mini",
+      "slug": "doniczka-betonowa-mini",
+      "description": "Nowoczesna mini doniczka z betonu, surowy i minimalistyczny wygląd.",
+      "price": "39.90",
+      "stock": 8,
+      "is_active": true,
+      "image": "/media/products/plant-2.svg"
+    }
+  },
+  {
+    "model": "sklepzdoniczkami.product",
+    "pk": 3,
+    "fields": {
+      "category": 1,
+      "name": "Doniczka Zewnętrzna Duża",
+      "slug": "doniczka-zewnetrzna-duza",
+      "description": "Duża, mrozoodporna doniczka na taras lub do ogrodu.",
+      "price": "89.00",
+      "stock": 5,
+      "is_active": true,
+      "image": "/media/products/plant-3.svg"
+    }
+  },
+  {
+    "model": "sklepzdoniczkami.product",
+    "pk": 4,
+    "fields": {
+      "category": 1,
+      "name": "Doniczka Glazurowana Średnia",
+      "slug": "doniczka-glazurowana-srednia",
+      "description": "Średniej wielkości doniczka z piękną glazurą — idealna do salonu.",
+      "price": "59.50",
+      "stock": 10,
+      "is_active": true,
+      "image": "/media/products/plant-1.svg"
+    }
+  },
+  {
+    "model": "sklepzdoniczkami.product",
+    "pk": 5,
+    "fields": {
+      "category": 1,
+      "name": "Doniczka Wisząca",
+      "slug": "doniczka-wiszaca",
+      "description": "Lekka doniczka wisząca, świetna do małych pnączy i zielonych kącików.",
+      "price": "44.00",
+      "stock": 7,
+      "is_active": true,
+      "image": "/media/products/plant-2.svg"
+    }
+  }
+]
