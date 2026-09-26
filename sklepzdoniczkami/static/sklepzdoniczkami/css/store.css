@@ -82,7 +82,7 @@ button { cursor: pointer; }
 .product-art-True { background: #eee9de; }
 .product-art-False { background: #e5ede9; }
 .product-art-orbit { position: absolute; top: 13%; left: 50%; width: 148px; height: 148px; border: 1px solid #d4ddce; border-radius: 50%; transform: translateX(-50%); }
-.product-art svg { position: relative; z-index: 1; width: min(76%, 190px); height: 190px; transition: transform .4s ease; }
+.product-art svg, .product-art img.product-image { position: relative; z-index: 1; width: min(76%, 190px); height: 190px; transition: transform .4s ease; object-fit: contain; }
 .product-card:hover .product-art svg { transform: translateY(-5px) scale(1.04); }
 .plant-stem { fill: none; stroke: #738b5d; stroke-width: 4; stroke-linecap: round; }
 .plant-leaf { fill: #80956a; }

@@ -12,11 +12,15 @@
         <div class="product-detail">
             <div class="detail-art">
                 <span class="product-art-orbit"></span>
+                {% if product.image %}
+                    <img class="product-image" src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
+                {% else %}
                 <svg viewBox="0 0 300 280" aria-hidden="true">
                     <path class="plant-stem" d="M150 202V55m0 112c-42-39-69-54-103-55m104 37c36-48 61-67 101-77m-102 35c-10-39-25-62-56-82m57 94c21-40 46-60 79-71" />
                     <path class="plant-leaf leaf-one" d="M47 115c36-9 70 10 103 54-42 14-79-2-103-54Zm104 4c19-46 52-72 104-81-12 51-45 78-104 81Zm0-38c5-40 27-68 61-87 4 40-16 68-61 87Zm-6 92c-25-33-55-47-97-46 14 40 47 56 97 46Z" />
                     <path class="plant-pot" d="M103 198h94l-10 68h-74l-10-68Zm-8-13h110v16H95z" />
                 </svg>
+                {% endif %}
                 <span class="art-category">{{ product.category.name }}</span>
             </div>
             <section class="detail-copy">
