@@ -2,12 +2,13 @@
     color-scheme: light;
     --ink: #26342b;
     --muted: #747c72;
-    --green: #355d46;
-    --green-dark: #234332;
+    --green: #2b4d3b; /* slightly darker for contrast */
+    --green-dark: #1f3b2e;
     --green-soft: #e6ecdf;
     --paper: #f7f6f0;
     --white: #fffefa;
     --line: #e8e7df;
+    --focus: #9ccaa0;
     --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
     --sans: "Avenir Next", Avenir, "Segoe UI", Arial, sans-serif;
     font-family: var(--sans);
@@ -41,8 +42,9 @@ button { cursor: pointer; }
 .hero h1 { margin: 22px 0 17px; color: var(--green-dark); font: 500 clamp(38px, 4.4vw, 60px)/1.12 var(--serif); letter-spacing: -.045em; }
 .hero h1 em { color: #789064; font-weight: 500; }
 .hero-copy > p { max-width: 410px; margin: 0 0 27px; color: #657265; font-size: 15px; }
-.btn { display: inline-flex; align-items: center; gap: 20px; padding: 13px 19px; border: 0; border-radius: 3px; background: var(--green); color: white; font-size: 13px; font-weight: 600; }
-.btn:hover, .btn:focus-visible { transform: translateY(-2px); background: var(--green-dark); box-shadow: 0 7px 18px #23433224; }
+.btn { display: inline-flex; align-items: center; gap: 20px; padding: 14px 20px; border: 0; border-radius: 4px; background: var(--green); color: white; font-size: 14px; font-weight: 700; }
+.btn:hover { transform: translateY(-2px); background: var(--green-dark); box-shadow: 0 7px 18px #23433224; }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .btn span { font-size: 18px; line-height: 1; }
 .hero-note { display: flex; align-items: center; gap: 8px; margin-top: 28px; color: #778074; font-size: 11px; letter-spacing: .04em; }
 .hero-note-icon { color: #82936a; font-size: 18px; }
@@ -97,8 +99,9 @@ button { cursor: pointer; }
 .product-buy-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid #eeeee8; }
 .price { color: var(--green-dark); font-size: 19px; font-weight: 600; letter-spacing: -.03em; }
 .price small { font-size: 12px; font-weight: 500; }
-.add-button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 50%; background: var(--green); color: white; font-size: 22px; line-height: 1; }
-.add-button:hover, .add-button:focus-visible { transform: rotate(90deg); background: #789064; }
+.add-button { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 50%; background: var(--green); color: white; font-size: 22px; line-height: 1; padding: 4px; }
+.add-button:hover { transform: rotate(90deg); background: #789064; }
+.add-button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; box-shadow: 0 6px 18px #20392522; }
 .unavailable { color: #a0705c; font-size: 10px; }
 .empty-state { grid-column: 1/-1; padding: 55px 20px; text-align: center; }
 .empty-state > span { color: #91a07d; font-size: 38px; }
@@ -121,6 +124,13 @@ button { cursor: pointer; }
 .messages .warning { background: #f7edce; color: #745d24; }
 .messages .error { background: #f4e3de; color: #8a3e34; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Accessibility helpers: visible focus and larger hit targets */
+.product-card:focus-within { box-shadow: 0 12px 28px #2039251a; outline: 3px solid #dfefe0; outline-offset: 2px; }
+.product-grid { outline: none; }
+/* Ensure interactive elements have clear focus */
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
 
 main > .container:not(.message-wrap) { padding-top: 42px; padding-bottom: 64px; }
 main > .container:not(.message-wrap) > h1 { margin: 0 0 25px; color: var(--green-dark); font: 500 38px/1.2 var(--serif); }
