@@ -110,9 +110,9 @@ def validate_stripe_configuration(app_env, secret_key, public_key, webhook_secre
     return True
 
 
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
-STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', '')
-STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '').strip()
+STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', '').strip()
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '').strip()
 STRIPE_ENABLED = validate_stripe_configuration(
     APP_ENV,
     STRIPE_SECRET_KEY,
