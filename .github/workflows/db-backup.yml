@@ -10,11 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Check required secrets
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION || secrets.DATABASE_URL }}
@@ -60,7 +55,7 @@ jobs:
             backup.dump.enc backup.dump.enc.hmac backup.hmac.keyid
 
       - name: Upload encrypted backup
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: db-backup-package-${{ github.run_id }}.tgz
           path: db-backup-files-${{ github.run_id }}.tgz
