@@ -59,17 +59,21 @@ Projekt ma trzy odizolowane środowiska:
 
 | Środowisko | Aplikacja | Baza | Dane i płatności |
 |---|---|---|---|
-| Lokalny development | Na komputerze | Lokalny PostgreSQL z Docker Compose (lub domyślny SQLite) | Lokalne/testowe |
-| Preprod | Render `sklepzdoniczkami-preprod` | Osobna baza Neon | Katalog syntetyczny, klucze Stripe testowe |
+| Lokalny development | Na komputerze | `sklepzdoniczkami-dev` (lokalny PostgreSQL z Docker Compose lub domyślny SQLite) | Lokalne/testowe |
+| Preprod | Render `sklepzdoniczkami-preprod` | Neon `sklepzdoniczkami-preprod` | Katalog syntetyczny, płatności testowe lub wyłączone |
 | Produkcja | Render `sklepzdoniczkami` | Produkcyjna baza Neon | Prawdziwe zamówienia, klucze Stripe live |
+
+Nazwy baz środowiskowych używają myślnika i sufiksu środowiska (`-dev`,
+`-preprod`); produkcyjna baza zachowuje krótką nazwę kanoniczną
+`sklepzdoniczkami`.
 
 Po synchronizacji Blueprint ustaw w Renderze `DATABASE_URL` osobno dla obu
 usług. Preprod i produkcja muszą wskazywać **różne bazy Neon**; najlepiej
 utworzyć dla każdej osobny projekt i ograniczyć dostęp do produkcyjnej bazy.
-Utwórz nową bazę o nazwie `sklepzdoniczkami_preprod` w oddzielnym projekcie Neon
+Utwórz nową bazę o nazwie `sklepzdoniczkami-preprod` w oddzielnym projekcie Neon
 dla preprod — nie używaj starego URL-a stagingowego, bo mógł zawierać kopię danych
 produkcyjnych. Aplikacja preprod odmawia startu, jeśli nazwa bazy z URL-a nie
-jest dokładnie `sklepzdoniczkami_preprod`.
+jest dokładnie `sklepzdoniczkami-preprod`.
 Lokalny `.env` ma wskazywać tylko lokalny PostgreSQL, nigdy Neon production.
 Preprod automatycznie tworzy kilka fikcyjnych kategorii i produktów podczas
 wdrożenia. Nie kopiuje bazy ani danych użytkowników/zamówień z produkcji.
