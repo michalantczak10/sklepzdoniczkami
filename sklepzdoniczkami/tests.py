@@ -7,9 +7,10 @@ from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.messages.storage.fallback import FallbackStorage
-from django.db import connection
 from django.core import signing
-from django.test import RequestFactory, TestCase
+from django.core.management import call_command, CommandError
+from django.db import connection
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
@@ -25,6 +26,29 @@ from .views import (
 inventory_migration = import_module(
     "sklepzdoniczkami.migrations.0006_order_inventory_deducted"
 )
+
+
+class PreprodSeedCommandTests(TestCase):
+    @override_settings(APP_ENV="development")
+    def test_seed_command_refuses_to_run_outside_preprod(self):
+        with self.assertRaises(CommandError):
+            call_command("seed_preprod_data")
+
+        self.assertEqual(Category.objects.count(), 0)
+        self.assertEqual(Product.objects.count(), 0)
+
+    @override_settings(APP_ENV="preprod")
+    def test_seed_command_creates_only_idempotent_synthetic_catalogue(self):
+        call_command("seed_preprod_data", verbosity=0)
+        call_command("seed_preprod_data", verbosity=0)
+
+        self.assertEqual(Category.objects.count(), 2)
+        self.assertEqual(Product.objects.count(), 3)
+        self.assertFalse(get_user_model().objects.exists())
+        self.assertFalse(Order.objects.exists())
+        self.assertTrue(
+            Product.objects.filter(slug="preprod-monstera-deliciosa").exists()
+        )
 
 
 class ProductCatalogTests(TestCase):

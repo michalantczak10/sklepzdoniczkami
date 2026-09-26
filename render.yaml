@@ -29,25 +29,27 @@ services:
         sync: false
 
   - type: web
-    name: sklepzdoniczkami-staging
+    name: sklepzdoniczkami-preprod
     runtime: python
     plan: free
     branch: main
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py rename_shop_label && python manage.py migrate --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py rename_shop_label && python manage.py migrate --noinput && python manage.py seed_preprod_data
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: APP_ENV
-        value: staging
+        value: preprod
+      - key: PREPROD_DATABASE_NAME
+        value: sklep_preprod
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: "sklepzdoniczkami-staging.onrender.com"
+        value: "sklepzdoniczkami-preprod.onrender.com"
       - key: CSRF_TRUSTED_ORIGINS
-        value: "https://sklepzdoniczkami-staging.onrender.com"
+        value: "https://sklepzdoniczkami-preprod.onrender.com"
       - key: SITE_NAME
-        value: "Sklepzdoniczkami Staging"
+        value: "Sklepzdoniczkami Preprod"
       - key: DATABASE_URL
         sync: false
       - key: STRIPE_SECRET_KEY
@@ -57,6 +59,6 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
 
-# Create separate Neon databases/branches for production and staging. Set each
-# service's DATABASE_URL to its own Neon connection string in the Render
-# dashboard; never point both services at the same database.
+# Create separate Neon databases for production and preproduction. Set each
+# service's DATABASE_URL to its own Neon connection string in Render; never
+# point both services at the same database.

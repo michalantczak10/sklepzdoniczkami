@@ -22,8 +22,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
 APP_ENV = os.environ.get('APP_ENV', 'development').strip().lower()
-if APP_ENV not in {'development', 'staging', 'production'}:
-    raise ImproperlyConfigured('APP_ENV must be development, staging, or production.')
+if APP_ENV not in {'development', 'preprod', 'production'}:
+    raise ImproperlyConfigured('APP_ENV must be development, preprod, or production.')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
@@ -35,7 +35,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-ew3ox9x+(5*j2p
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') if os.environ.get('ALLOWED_HOSTS') else ['*']
-if APP_ENV in {'staging', 'production'}:
+if APP_ENV in {'preprod', 'production'}:
     if not os.environ.get('DATABASE_URL'):
         raise ImproperlyConfigured(f'DATABASE_URL is required when APP_ENV={APP_ENV}.')
     if not os.environ.get('DJANGO_SECRET_KEY'):
@@ -44,6 +44,14 @@ if APP_ENV in {'staging', 'production'}:
         raise ImproperlyConfigured(f'DEBUG must be False when APP_ENV={APP_ENV}.')
     if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
         raise ImproperlyConfigured(f'ALLOWED_HOSTS must be explicitly configured when APP_ENV={APP_ENV}.')
+if APP_ENV == 'preprod':
+    expected_database_name = os.environ.get('PREPROD_DATABASE_NAME')
+    actual_database_name = dj_database_url.parse(os.environ['DATABASE_URL'])['NAME']
+    if not expected_database_name or actual_database_name != expected_database_name:
+        raise ImproperlyConfigured(
+            'Preprod DATABASE_URL must point to the dedicated '
+            f'{expected_database_name or "PREPROD_DATABASE_NAME"} database.'
+        )
 
 CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS', 'http://localhost,https://localhost'
@@ -66,11 +74,11 @@ if not DEBUG:
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_dummy')
 STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_dummy')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', 'whsec_dummy')
-if APP_ENV == 'staging' and (
+if APP_ENV == 'preprod' and (
     not STRIPE_SECRET_KEY.startswith('sk_test_')
     or not STRIPE_PUBLIC_KEY.startswith('pk_test_')
 ):
-    raise ImproperlyConfigured('Staging must use Stripe test-mode keys.')
+    raise ImproperlyConfigured('Preproduction must use Stripe test-mode keys.')
 
 # Application definition
 
