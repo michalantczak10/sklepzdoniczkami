@@ -3,6 +3,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 
 from sklepzdoniczkami.models import Category, Product
 
@@ -84,25 +85,34 @@ class Command(BaseCommand):
                 raise CommandError(f"Sample product image is missing: {source}")
             shutil.copyfile(source, media_dir / filename)
 
-        categories = {
-            slug: Category.objects.get_or_create(slug=slug, defaults={"name": name})[0]
-            for slug, name in SAMPLE_CATEGORIES.items()
-        }
-        for sample in SAMPLE_PRODUCTS:
-            product_data = sample.copy()
-            image_name = product_data.pop("image")
-            category_slug = product_data.pop("category")
-            legacy_slug = product_data.pop("legacy_slug")
-            if legacy_slug != product_data["slug"]:
-                Product.objects.filter(slug=legacy_slug).update(slug=product_data["slug"])
-            Product.objects.update_or_create(
-                slug=product_data["slug"],
-                defaults={
-                    **product_data,
-                    "category": categories[category_slug],
-                    "image": f"{settings.MEDIA_URL}products/{image_name}",
-                    "is_active": True,
-                },
-            )
+        with transaction.atomic():
+            categories = {
+                slug: Category.objects.get_or_create(slug=slug, defaults={"name": name})[0]
+                for slug, name in SAMPLE_CATEGORIES.items()
+            }
+            for sample in SAMPLE_PRODUCTS:
+                product_data = sample.copy()
+                image_name = product_data.pop("image")
+                category_slug = product_data.pop("category")
+                legacy_slug = product_data.pop("legacy_slug")
+                if legacy_slug != product_data["slug"]:
+                    legacy_product = Product.objects.filter(slug=legacy_slug).first()
+                    if legacy_product:
+                        slug_taken = Product.objects.filter(slug=product_data["slug"]).exists()
+                        if slug_taken:
+                            legacy_product.is_active = False
+                            legacy_product.save(update_fields=["is_active"])
+                        else:
+                            legacy_product.slug = product_data["slug"]
+                            legacy_product.save(update_fields=["slug"])
+                Product.objects.update_or_create(
+                    slug=product_data["slug"],
+                    defaults={
+                        **product_data,
+                        "category": categories[category_slug],
+                        "image": f"{settings.MEDIA_URL}products/{image_name}",
+                        "is_active": True,
+                    },
+                )
 
         self.stdout.write(self.style.SUCCESS("Loaded five sample pot products in three material categories."))
