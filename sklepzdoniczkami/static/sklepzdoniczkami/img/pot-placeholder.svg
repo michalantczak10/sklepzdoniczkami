@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" role="img">
+  <title>Mini doniczka</title>
+  <rect width="120" height="100" rx="8" fill="#f6f7f3"/>
+  <g transform="translate(10,20)">
+    <path d="M10 50h100l-10 20H20z" fill="#c27b5d" />
+    <ellipse cx="60" cy="30" rx="40" ry="18" fill="#f0f2eb" />
+  </g>
+</svg>
