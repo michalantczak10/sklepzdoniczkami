@@ -68,6 +68,59 @@ class SampleProductCommandTests(TestCase):
             self.assertTrue(
                 all(product.image.startswith("/media/products/") for product in products)
             )
+            self.assertEqual(
+                {
+                    category.slug: category.products.filter(is_active=True).count()
+                    for category in Category.objects.filter(
+                        slug__in=("ceramiczne", "plastikowe", "cementowe")
+                    )
+                },
+                {"ceramiczne": 2, "plastikowe": 2, "cementowe": 1},
+            )
+
+            response = self.client.get(reverse("sklepzdoniczkami:products"))
+            self.assertContains(response, "Wybierz materiał")
+            self.assertContains(response, "Ceramiczne")
+            self.assertContains(response, "Plastikowe")
+            self.assertContains(response, "Cementowe")
+            self.assertContains(response, "2 pozycji")
+
+            plastic_category = Category.objects.get(slug="plastikowe")
+            filtered_response = self.client.get(plastic_category.get_absolute_url())
+            self.assertContains(filtered_response, "Kolorowy zestaw doniczek plastikowych")
+            self.assertContains(filtered_response, "Duża doniczka plastikowa ogrodowa")
+            self.assertNotContains(filtered_response, "Doniczka cementowa klasyczna")
+
+    def test_sample_command_preserves_legacy_product_when_canonical_slug_exists(self):
+        category = Category.objects.create(name="Stara kategoria", slug="stara-kategoria")
+        legacy_product = Product.objects.create(
+            category=category,
+            name="Starszy produkt",
+            slug="doniczka-terakotowa-na-podstawce",
+            price="10.00",
+            stock=1,
+        )
+        Product.objects.create(
+            category=category,
+            name="Istniejący produkt",
+            slug="doniczka-ceramiczna-na-podstawce",
+            price="20.00",
+            stock=1,
+        )
+
+        with TemporaryDirectory() as media_root:
+            with override_settings(
+                APP_ENV="development",
+                MEDIA_ROOT=media_root,
+                MEDIA_URL="/media/",
+            ):
+                call_command("load_sample_products", verbosity=0)
+
+        legacy_product.refresh_from_db()
+        canonical_product = Product.objects.get(slug="doniczka-ceramiczna-na-podstawce")
+        self.assertFalse(legacy_product.is_active)
+        self.assertTrue(canonical_product.is_active)
+        self.assertEqual(canonical_product.name, "Doniczka ceramiczna na podstawce")
 
     @override_settings(APP_ENV="preprod")
     def test_sample_products_command_refuses_to_run_outside_development(self):
