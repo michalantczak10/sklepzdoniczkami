@@ -1,4 +1,5 @@
 {% extends 'sklepzdoniczkami/base.html' %}
+{% load static %}
 
 {% block title %}{% if active_category %}{{ active_category.name }}{% else %}Doniczki{% endif %}{% endblock %}
 
@@ -14,21 +15,21 @@
                     <div class="hero-note"><span class="hero-note-icon">✳</span> Starannie wybrane doniczki, gotowe do wysyłki.</div>
                 </div>
                 <div class="hero-art" aria-hidden="true">
-                    <img src="{% static 'sklepzdoniczkami/img/pot-hero.svg' %}" alt="Doniczka" class="hero-image" loading="lazy">
+                    <img src="{% static 'sklepzdoniczkami/img/products/pot-terracotta-3.jpg' %}" alt="" class="hero-image">
                 </div>
             </section>
 
             <div class="benefits" aria-label="Nasze zalety">
-                <div><span class="benefit-icon">✿</span><span><strong>Wybrane z sercem</strong><small>Rośliny, które cieszą</small></span></div>
-                <div><span class="benefit-icon">♧</span><span><strong>Zielony spokój</strong><small>Piękno bez pośpiechu</small></span></div>
-                <div><span class="benefit-icon">⌂</span><span><strong>Dom pełen życia</strong><small>Małe rzeczy, duża zmiana</small></span></div>
+                <div><span class="benefit-icon">✿</span><span><strong>Wybrane z sercem</strong><small>Doniczki do różnych wnętrz</small></span></div>
+                <div><span class="benefit-icon">♧</span><span><strong>Różne materiały</strong><small>Ceramika, beton i terakota</small></span></div>
+                <div><span class="benefit-icon">⌂</span><span><strong>Na parapet i taras</strong><small>Rozmiary do domu i ogrodu</small></span></div>
             </div>
         {% endif %}
 
         <section class="catalog" id="produkty">
             <div class="section-heading">
                 <div>
-                    <span class="eyebrow">{% if active_category %}Zielona kolekcja{% else %}Znajdź coś dla siebie{% endif %}</span>
+                    <span class="eyebrow">{% if active_category %}Kolekcja doniczek{% else %}Znajdź coś dla siebie{% endif %}</span>
                     <h2>{% if active_category %}{{ active_category.name }}{% elif search_query %}Wyniki wyszukiwania{% else %}Wszystkie produkty{% endif %}</h2>
                 </div>
                 <form class="search-form" method="get" action="{% if active_category %}{{ active_category.get_absolute_url }}{% else %}{% url 'sklepzdoniczkami:products' %}{% endif %}">
@@ -64,7 +65,7 @@
                                 <h3><a href="{{ product.get_absolute_url }}">{{ product.name }}</a></h3>
                                 {% if product.stock == 0 %}<span class="stock-dot out-of-stock" aria-label="Brak w magazynie"></span>{% else %}<span class="stock-dot" aria-label="Dostępny"></span>{% endif %}
                             </div>
-                            <p class="product-description">{{ product.description|truncatechars:82|default:"Mały zielony akcent, który wniesie do wnętrza odrobinę natury." }}</p>
+                            <p class="product-description">{{ product.description|truncatechars:82|default:"Stylowa doniczka, która podkreśli charakter Twojego wnętrza." }}</p>
                             <div class="product-buy-row">
                                 <span class="price">{{ product.price }} <small>zł</small></span>
                                 {% if product.stock %}

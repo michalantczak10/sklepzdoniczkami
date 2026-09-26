@@ -1,16 +1,25 @@
-Sample images and loading
+# Sample pot photos
 
-This project includes a small set of sample product images in docs/sample-images/ to help with visual testing.
+For a local catalog with five example products, run:
 
-To load them into your local development media and assign to products:
+```powershell
+python manage.py migrate
+python manage.py load_sample_products
+```
 
-1. Ensure MEDIA_ROOT exists and Django settings point to it (default: media/).
-2. Run the management command:
+The command is restricted to `APP_ENV=development`, is safe to run repeatedly,
+and copies the example photos into `MEDIA_ROOT/products/`. In debug mode,
+Django serves these files from `/media/`.
 
-    python manage.py load_sample_images
+These sample photos are not product-specific sales images. Replace them with
+accurate photos of the actual pots before enabling the sample products in a
+live catalog.
 
-This will copy files from docs/sample-images into media/products/ and assign them to the first products in the database by primary key order (one image per product).
+Photo credits:
 
-Notes:
-- These files are intentionally small SVG placeholders for local testing. For production, upload real optimized JPEG/WEBP images and use a proper media storage.
-- The Product.image field stores a URL/path (string). In templates, product.image is used directly as the image src.
+- `pot-terracotta-1.jpg` — Vanessa Dyste, [Unsplash](https://unsplash.com/photos/brown-clay-pot-on-gray-concrete-epUnuoLl8es)
+- `pot-terracotta-2.jpg` — Annie Spratt, [Unsplash](https://unsplash.com/photos/brown-clay-flower-pots-OlUNA6dteb0)
+- `pot-terracotta-3.jpg` — Jona, [Unsplash](https://unsplash.com/photos/green-potted-plant-on-brown-wooden-table-vd0yQBsV0Sw)
+
+The images are used under the Unsplash License. Their photographer attribution
+is included here as a courtesy.
