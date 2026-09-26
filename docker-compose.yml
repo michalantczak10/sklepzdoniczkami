@@ -16,9 +16,9 @@ services:
   db:
     image: postgres:18
     environment:
-      POSTGRES_DB: sklep_dev
-      POSTGRES_USER: sklep
-      POSTGRES_PASSWORD: sklep_pass
+      POSTGRES_DB: sklepzdoniczkami_dev
+      POSTGRES_USER: sklepzdoniczkami
+      POSTGRES_PASSWORD: sklepzdoniczkami_dev_pass
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

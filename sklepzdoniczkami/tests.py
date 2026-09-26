@@ -108,6 +108,16 @@ class ProductCatalogTests(TestCase):
         self.assertTrue(order.inventory_deducted)
         self.assertEqual(self.client.session.get("cart", {}), {})
 
+    @override_settings(STRIPE_SECRET_KEY="", STRIPE_PUBLIC_KEY="")
+    def test_checkout_hides_card_payment_when_stripe_is_unconfigured(self):
+        self.client.post(
+            reverse("sklepzdoniczkami:add_to_cart", kwargs={"product_id": self.product.pk})
+        )
+        response = self.client.get(reverse("sklepzdoniczkami:checkout"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Karta płatnicza")
+
     def test_checkout_rejects_quantity_above_current_stock(self):
         self.client.post(
             reverse("sklepzdoniczkami:add_to_cart", kwargs={"product_id": self.product.pk})

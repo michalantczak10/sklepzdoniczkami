@@ -269,6 +269,7 @@ def checkout_view(request):
         "items": items,
         "total": total,
         "shipping_costs": shipping_costs,
+        "stripe_enabled": bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_PUBLIC_KEY),
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
     return render(request, "sklepzdoniczkami/checkout.html", context)
