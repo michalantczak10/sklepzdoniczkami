@@ -1,29 +1,20 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 
-{% block title %}{% if active_category %}{{ active_category.name }}{% else %}Rośliny i doniczki{% endif %}{% endblock %}
+{% block title %}{% if active_category %}{{ active_category.name }}{% else %}Doniczki{% endif %}{% endblock %}
 
 {% block content %}
     <div class="container">
         {% if not active_category and not search_query %}
             <section class="hero">
                 <div class="hero-copy">
-                    <span class="eyebrow"><span class="eyebrow-dot"></span> Zielony dom zaczyna się tutaj</span>
-                    <h1>Niech w Twoim domu<br><em>zakwitnie</em> coś dobrego.</h1>
-                    <p>Rośliny, doniczki i małe dodatki, dzięki którym codzienność robi się trochę bardziej zielona.</p>
-                    <a class="btn" href="#produkty">Odkryj kolekcję <span aria-hidden="true">→</span></a>
-                    <div class="hero-note"><span class="hero-note-icon">✳</span> Starannie wybrane. Z miłości do zieleni.</div>
+                    <span class="eyebrow"><span class="eyebrow-dot"></span> Doniczki dla każdego wnętrza</span>
+                    <h1>Piękne<br><em>doniczki</em> dla Twojego domu.</h1>
+                    <p>Specjalizujemy się tylko w doniczkach — od małych do dużych, klasycznych i nowoczesnych.</p>
+                    <a class="btn" href="#produkty">Przejdź do doniczek <span aria-hidden="true">→</span></a>
+                    <div class="hero-note"><span class="hero-note-icon">✳</span> Starannie wybrane doniczki, gotowe do wysyłki.</div>
                 </div>
                 <div class="hero-art" aria-hidden="true">
-                    <div class="hero-sun"></div>
-                    <div class="hero-arch">
-                        <svg viewBox="0 0 460 430" role="presentation">
-                            <path class="hero-stem" d="M230 340C226 260 233 180 230 76M230 252c-52-48-88-69-133-76m132 114c49-62 88-88 139-106m-139-6c31-56 55-86 96-112m-96 153c-24-56-50-83-91-111" />
-                            <path class="hero-leaf" d="M97 175c48-7 91 18 132 72-54 13-102-8-132-72Zm132 43c25-65 69-103 137-116-15 66-59 104-137 116Zm0-107c12-59 44-98 97-122 0 58-31 98-97 122Zm-13 141c-9-57-39-99-92-127-5 59 24 100 92 127Z" />
-                            <path class="hero-pot" d="M163 328h134l-15 88h-104l-15-88Zm-10-16h154v19H153z" />
-                            <path class="hero-pot-detail" d="M184 348h92" />
-                        </svg>
-                    </div>
-                    <div class="hero-sticker"><span>dobry<br>wybór</span><b>✳</b></div>
+                    <img src="{% static 'sklepzdoniczkami/img/pot-hero.svg' %}" alt="Doniczka" class="hero-image" loading="lazy">
                 </div>
             </section>
 
@@ -64,11 +55,7 @@
                             {% if product.image %}
                                 <img class="product-image" src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
                             {% else %}
-                            <svg viewBox="0 0 240 220" aria-hidden="true">
-                                <path class="plant-stem" d="M120 156V53m0 81c-33-31-53-42-80-43m81 29c28-38 48-53 79-61m-80 29c-8-31-20-49-44-65m44 74c17-32 36-48 62-57" />
-                                <path class="plant-leaf leaf-one" d="M39 91c28-7 55 8 82 43-33 11-62-2-82-43Zm81 3c15-36 41-57 82-64-9 40-35 61-82 64Zm0-30c4-31 21-53 48-68 3 31-13 53-48 68Zm-5 71c-20-26-43-37-76-36 11 31 37 44 76 36Z" />
-                                <path class="plant-pot" d="M83 153h74l-8 54H91l-8-54Zm-6-10h86v13H77z" />
-                            </svg>
+                                <img class="product-image" src="{% static 'sklepzdoniczkami/img/pot-placeholder.svg' %}" alt="{{ product.name }}" loading="lazy">
                             {% endif %}
                             <span class="art-category">{{ product.category.name }}</span>
                         </a>
