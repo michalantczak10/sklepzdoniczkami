@@ -9,14 +9,17 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_ENV: production
+      APP_ENV: development
+      DATABASE_URL: postgresql://sklepzdoniczkami:sklepzdoniczkami_dev_pass@db:5432/sklepzdoniczkami_dev
     depends_on:
       - db
 
   db:
     image: postgres:18
+    ports:
+      - "5434:5432"
     environment:
-      POSTGRES_DB: sklepzdoniczkami-dev
+      POSTGRES_DB: sklepzdoniczkami_dev
       POSTGRES_USER: sklepzdoniczkami
       POSTGRES_PASSWORD: sklepzdoniczkami_dev_pass
     volumes:
