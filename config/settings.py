@@ -71,19 +71,54 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_dummy')
-STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_dummy')
-STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', 'whsec_dummy')
-if APP_ENV == 'preprod':
-    if bool(STRIPE_SECRET_KEY) != bool(STRIPE_PUBLIC_KEY):
+def validate_stripe_configuration(app_env, secret_key, public_key, webhook_secret):
+    secret_key, public_key, webhook_secret = (
+        secret_key.strip(),
+        public_key.strip(),
+        webhook_secret.strip(),
+    )
+    keys = (secret_key, public_key, webhook_secret)
+    if not any(keys):
+        return False
+    if not all(keys):
         raise ImproperlyConfigured(
-            'Preproduction must configure both Stripe keys or leave both unset.'
+            'Configure all three Stripe secrets or leave them all unset.'
         )
-    if STRIPE_SECRET_KEY and (
-        not STRIPE_SECRET_KEY.startswith('sk_test_')
-        or not STRIPE_PUBLIC_KEY.startswith('pk_test_')
-    ):
-        raise ImproperlyConfigured('Preproduction must use Stripe test-mode keys.')
+    if not webhook_secret.startswith('whsec_'):
+        raise ImproperlyConfigured('STRIPE_WEBHOOK_SECRET must be a Stripe webhook secret.')
+
+    expected_prefixes = {
+        'preprod': ('sk_test_', 'pk_test_'),
+        'production': ('sk_live_', 'pk_live_'),
+    }
+    allowed_prefixes = expected_prefixes.get(app_env)
+    if allowed_prefixes:
+        valid_mode = secret_key.startswith(allowed_prefixes[0]) and public_key.startswith(
+            allowed_prefixes[1]
+        )
+    else:
+        valid_mode = (
+            secret_key.startswith('sk_test_') and public_key.startswith('pk_test_')
+        ) or (
+            secret_key.startswith('sk_live_') and public_key.startswith('pk_live_')
+        )
+    if not valid_mode:
+        mode = 'test-mode' if app_env == 'preprod' else (
+            'live-mode' if app_env == 'production' else 'matching test- or live-mode'
+        )
+        raise ImproperlyConfigured(f'{app_env} must use Stripe {mode} keys.')
+    return True
+
+
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '').strip()
+STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', '').strip()
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '').strip()
+STRIPE_ENABLED = validate_stripe_configuration(
+    APP_ENV,
+    STRIPE_SECRET_KEY,
+    STRIPE_PUBLIC_KEY,
+    STRIPE_WEBHOOK_SECRET,
+)
 
 # Application definition
 

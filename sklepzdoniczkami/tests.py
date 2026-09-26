@@ -9,12 +9,14 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import signing
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command, CommandError
 from django.db import connection
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
+from config.settings import validate_stripe_configuration
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -130,6 +132,33 @@ class SampleProductCommandTests(TestCase):
         self.assertFalse(Product.objects.filter(is_active=True).exists())
 
 
+class StripeConfigurationTests(TestCase):
+    def test_stripe_can_be_disabled_by_leaving_all_secrets_unset(self):
+        self.assertFalse(validate_stripe_configuration("production", "", "", ""))
+
+    def test_stripe_configuration_requires_all_secrets(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "Configure all three"):
+            validate_stripe_configuration("preprod", "sk_test_key", "pk_test_key", "")
+
+    def test_preprod_rejects_live_keys(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "test-mode"):
+            validate_stripe_configuration(
+                "preprod", "sk_live_key", "pk_live_key", "whsec_test"
+            )
+
+    def test_production_requires_live_keys(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "live-mode"):
+            validate_stripe_configuration(
+                "production", "sk_test_key", "pk_test_key", "whsec_test"
+            )
+
+    def test_development_rejects_mixed_key_modes(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "matching"):
+            validate_stripe_configuration(
+                "development", "sk_test_key", "pk_live_key", "whsec_test"
+            )
+
+
 class ProductCatalogTests(TestCase):
     def setUp(self):
         self.category = Category.objects.create(name="Elektronika", slug="elektronika")
@@ -187,7 +216,7 @@ class ProductCatalogTests(TestCase):
         self.assertTrue(order.inventory_deducted)
         self.assertEqual(self.client.session.get("cart", {}), {})
 
-    @override_settings(STRIPE_SECRET_KEY="", STRIPE_PUBLIC_KEY="")
+    @override_settings(STRIPE_SECRET_KEY="", STRIPE_PUBLIC_KEY="", STRIPE_ENABLED=False)
     def test_checkout_hides_card_payment_when_stripe_is_unconfigured(self):
         self.client.post(
             reverse("sklepzdoniczkami:add_to_cart", kwargs={"product_id": self.product.pk})

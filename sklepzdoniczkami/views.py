@@ -226,7 +226,7 @@ def checkout_view(request):
             messages.error(request, "Wypełnij wszystkie wymagane pola.")
         elif payment_method not in payment_methods or shipping_method not in shipping_costs:
             messages.error(request, "Wybrano nieprawidłową metodę płatności lub dostawy.")
-        elif payment_method == "card" and not settings.STRIPE_SECRET_KEY:
+        elif payment_method == "card" and not settings.STRIPE_ENABLED:
             messages.error(request, "Płatności kartą nie są obecnie dostępne.")
         else:
             shipping_cost = shipping_costs[shipping_method]
@@ -301,7 +301,7 @@ def checkout_view(request):
         "items": items,
         "total": total,
         "shipping_costs": shipping_costs,
-        "stripe_enabled": bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_PUBLIC_KEY),
+        "stripe_enabled": settings.STRIPE_ENABLED,
         "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
     }
     return render(request, "sklepzdoniczkami/checkout.html", context)
@@ -309,7 +309,7 @@ def checkout_view(request):
 
 def stripe_checkout(request, order_token):
     order = get_order_from_access_token(order_token)
-    if not settings.STRIPE_SECRET_KEY:
+    if not settings.STRIPE_ENABLED:
         messages.error(request, "Stripe nie jest skonfigurowany. Ustaw STRIPE_SECRET_KEY w środowisku.")
         return redirect("sklepzdoniczkami:checkout")
     if order.payment_method != "card" or order.is_paid or order.status != "pending":
@@ -449,7 +449,7 @@ def payment_success(request, order_token):
         and order.status == "pending"
         and order.inventory_deducted
         and session_id
-        and settings.STRIPE_SECRET_KEY
+        and settings.STRIPE_ENABLED
     ):
         try:
             session = stripe.checkout.Session.retrieve(session_id)
@@ -508,7 +508,7 @@ def payment_cancel(request, order_token):
             messages.error(request, "To zamówienie nie korzysta z płatności kartą.")
             return redirect("sklepzdoniczkami:checkout")
         if order.stripe_checkout_session_id:
-            if not settings.STRIPE_SECRET_KEY:
+            if not settings.STRIPE_ENABLED:
                 messages.error(
                     request,
                     "Nie można bezpiecznie anulować sesji płatności. "
