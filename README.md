@@ -82,7 +82,11 @@ Preprod automatycznie tworzy kilka fikcyjnych kategorii i produktów podczas
 wdrożenia. Nie kopiuje bazy ani danych użytkowników/zamówień z produkcji.
 Preprod może działać bez Stripe: płatność kartą jest wtedy ukryta, a przelew i
 pobranie pozostają dostępne. Po skonfigurowaniu Stripe należy ustawić komplet
-kluczy testowych; Django odrzuca tam klucze `sk_live_` i `pk_live_`.
+kluczy testowych i sekret webhooka (`whsec_`); Django odrzuca tam klucze
+`sk_live_` i `pk_live_`. Produkcja akceptuje wyłącznie komplet kluczy live i
+sekret webhooka. Jeśli konfiguracja Stripe jest niepełna albo nie pasuje do
+środowiska, aplikacja nie uruchomi się; jeśli wszystkie klucze są pominięte,
+płatność kartą zostanie wyłączona.
 
 Lokalnie ustaw `APP_ENV=development`, `DEBUG=True` i lokalny `DATABASE_URL` w
 `.env`. Jeśli URL nie jest ustawiony, Django używa lokalnego SQLite. Django

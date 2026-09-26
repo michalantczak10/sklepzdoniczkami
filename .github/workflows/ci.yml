@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 env:
+  APP_ENV: development
   DJANGO_SECRET_KEY: ci-test-secret-key
+  DATABASE_URL: postgres://test_user:test_pass@127.0.0.1:5432/test_db
   DEBUG: "True"
   ALLOWED_HOSTS: localhost,127.0.0.1
   CSRF_TRUSTED_ORIGINS: http://localhost,http://127.0.0.1

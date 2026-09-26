@@ -195,7 +195,7 @@ class OrderAdmin(admin.ModelAdmin):
                 and not previous.is_paid
                 and previous.stripe_checkout_session_id
             ):
-                if not settings.STRIPE_SECRET_KEY:
+                if not settings.STRIPE_ENABLED:
                     messages.error(
                         request,
                         "Nie można anulować zamówienia: brak konfiguracji Stripe. "
