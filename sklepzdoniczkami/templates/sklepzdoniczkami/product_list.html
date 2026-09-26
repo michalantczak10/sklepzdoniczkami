@@ -62,7 +62,7 @@
                         <a class="product-art product-art-{{ forloop.counter0|divisibleby:2 }}" href="{{ product.get_absolute_url }}" aria-label="Zobacz produkt {{ product.name }}">
                             <span class="product-art-orbit"></span>
                             {% if product.image %}
-                                <img class="product-image" src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy">
+                                <img class="product-image" src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
                             {% else %}
                             <svg viewBox="0 0 240 220" aria-hidden="true">
                                 <path class="plant-stem" d="M120 156V53m0 81c-33-31-53-42-80-43m81 29c28-38 48-53 79-61m-80 29c-8-31-20-49-44-65m44 74c17-32 36-48 62-57" />
