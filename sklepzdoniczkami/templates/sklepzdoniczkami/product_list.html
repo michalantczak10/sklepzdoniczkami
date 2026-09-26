@@ -79,7 +79,7 @@
                                 {% if product.stock %}
                                     <form method="post" action="{% url 'sklepzdoniczkami:add_to_cart' product.id %}">
                                         {% csrf_token %}
-                                        <button class="add-button" type="submit" aria-label="Dodaj {{ product.name }} do koszyka"><span aria-hidden="true">+</span></button>
+                                        <button class="add-button" type="submit" aria-label="Dodaj do koszyka"><span aria-hidden="true">+</span></button>
                                     </form>
                                 {% else %}
                                     <span class="unavailable">Chwilowo niedostępny</span>
