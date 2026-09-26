@@ -50,7 +50,9 @@
                         <label>Metoda płatności</label><br>
                         <select name="payment_method">
                             <option value="transfer">Przelew bankowy</option>
-                            <option value="card">Karta płatnicza</option>
+                            {% if stripe_enabled %}
+                                <option value="card">Karta płatnicza</option>
+                            {% endif %}
                             <option value="cash_on_delivery">Pobranie</option>
                         </select>
                     </div>

@@ -74,11 +74,16 @@ if not DEBUG:
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_dummy')
 STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_dummy')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', 'whsec_dummy')
-if APP_ENV == 'preprod' and (
-    not STRIPE_SECRET_KEY.startswith('sk_test_')
-    or not STRIPE_PUBLIC_KEY.startswith('pk_test_')
-):
-    raise ImproperlyConfigured('Preproduction must use Stripe test-mode keys.')
+if APP_ENV == 'preprod':
+    if bool(STRIPE_SECRET_KEY) != bool(STRIPE_PUBLIC_KEY):
+        raise ImproperlyConfigured(
+            'Preproduction must configure both Stripe keys or leave both unset.'
+        )
+    if STRIPE_SECRET_KEY and (
+        not STRIPE_SECRET_KEY.startswith('sk_test_')
+        or not STRIPE_PUBLIC_KEY.startswith('pk_test_')
+    ):
+        raise ImproperlyConfigured('Preproduction must use Stripe test-mode keys.')
 
 # Application definition
 

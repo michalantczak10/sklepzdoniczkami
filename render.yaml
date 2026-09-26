@@ -41,7 +41,7 @@ services:
       - key: APP_ENV
         value: preprod
       - key: PREPROD_DATABASE_NAME
-        value: sklep_preprod
+        value: sklepzdoniczkami_preprod
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS

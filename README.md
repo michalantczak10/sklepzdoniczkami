@@ -66,15 +66,16 @@ Projekt ma trzy odizolowane środowiska:
 Po synchronizacji Blueprint ustaw w Renderze `DATABASE_URL` osobno dla obu
 usług. Preprod i produkcja muszą wskazywać **różne bazy Neon**; najlepiej
 utworzyć dla każdej osobny projekt i ograniczyć dostęp do produkcyjnej bazy.
-Utwórz nową bazę o nazwie `sklep_preprod` w oddzielnym projekcie Neon dla
-preprod — nie używaj starego URL-a stagingowego, bo mógł zawierać kopię danych
+Utwórz nową bazę o nazwie `sklepzdoniczkami_preprod` w oddzielnym projekcie Neon
+dla preprod — nie używaj starego URL-a stagingowego, bo mógł zawierać kopię danych
 produkcyjnych. Aplikacja preprod odmawia startu, jeśli nazwa bazy z URL-a nie
-jest dokładnie `sklep_preprod`.
+jest dokładnie `sklepzdoniczkami_preprod`.
 Lokalny `.env` ma wskazywać tylko lokalny PostgreSQL, nigdy Neon production.
 Preprod automatycznie tworzy kilka fikcyjnych kategorii i produktów podczas
 wdrożenia. Nie kopiuje bazy ani danych użytkowników/zamówień z produkcji.
-Preprod wymaga kluczy Stripe testowych; Django odrzuca tam klucze `sk_live_`
-i `pk_live_`.
+Preprod może działać bez Stripe: płatność kartą jest wtedy ukryta, a przelew i
+pobranie pozostają dostępne. Po skonfigurowaniu Stripe należy ustawić komplet
+kluczy testowych; Django odrzuca tam klucze `sk_live_` i `pk_live_`.
 
 Lokalnie ustaw `APP_ENV=development`, `DEBUG=True` i lokalny `DATABASE_URL` w
 `.env`. Jeśli URL nie jest ustawiony, Django używa lokalnego SQLite. Django
@@ -83,10 +84,11 @@ odmawia uruchomienia preprod/produkcji bez `DATABASE_URL`, jawnego
 
 GitHub Actions potrzebuje sekretów:
 
-- `DATABASE_URL_PRODUCTION` — produkcyjna baza dla backupu (workflow zachowuje
-  zgodność z obecnym sekretem `DATABASE_URL`).
+- `DATABASE_URL_PRODUCTION` — produkcyjna baza dla backupu; ustaw jako sekret
+  środowiska GitHub `production`.
 - `BACKUP_ENCRYPTION_KEY` i `BACKUP_HMAC_KEY` — szyfrowanie i uwierzytelnianie
-  backupów.
+  backupów. Są obecnie sekretami repozytorium; nie ustawiaj ich ponownie jako
+  zmiennych Render ani Neon.
 
 Nie ma automatycznego workflowu przywracającego produkcyjną bazę na preprod.
 Tym samym dane klientów nie są kopiowane do środowiska przedprodukcyjnego.
