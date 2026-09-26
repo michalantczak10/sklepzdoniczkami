@@ -61,11 +61,15 @@
                     <article class="product-card">
                         <a class="product-art product-art-{{ forloop.counter0|divisibleby:2 }}" href="{{ product.get_absolute_url }}" aria-label="Zobacz produkt {{ product.name }}">
                             <span class="product-art-orbit"></span>
+                            {% if product.image %}
+                                <img class="product-image" src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy">
+                            {% else %}
                             <svg viewBox="0 0 240 220" aria-hidden="true">
                                 <path class="plant-stem" d="M120 156V53m0 81c-33-31-53-42-80-43m81 29c28-38 48-53 79-61m-80 29c-8-31-20-49-44-65m44 74c17-32 36-48 62-57" />
                                 <path class="plant-leaf leaf-one" d="M39 91c28-7 55 8 82 43-33 11-62-2-82-43Zm81 3c15-36 41-57 82-64-9 40-35 61-82 64Zm0-30c4-31 21-53 48-68 3 31-13 53-48 68Zm-5 71c-20-26-43-37-76-36 11 31 37 44 76 36Z" />
                                 <path class="plant-pot" d="M83 153h74l-8 54H91l-8-54Zm-6-10h86v13H77z" />
                             </svg>
+                            {% endif %}
                             <span class="art-category">{{ product.category.name }}</span>
                         </a>
                         <div class="product-info">

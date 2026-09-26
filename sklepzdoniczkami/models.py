@@ -26,6 +26,7 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    image = models.ImageField(upload_to='products/', null=True, blank=True)
 
     class Meta:
         db_table = "sklepzdoniczkami_product"
