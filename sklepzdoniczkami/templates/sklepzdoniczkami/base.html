@@ -3,99 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Sklepzdoniczkami{% endblock %}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            background: #f6f7fb;
-            color: #1f2937;
-        }
-        a { color: #1d4ed8; text-decoration: none; }
-        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
-        .topbar {
-            background: #111827; color: white; padding: 18px 0;
-        }
-        .nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        .brand { font-size: 1.5rem; font-weight: bold; }
-        .nav-links { display: flex; gap: 16px; flex-wrap: wrap; }
-        .nav-links a { color: white; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
-        .card {
-            background: white; border-radius: 12px; padding: 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.05);
-        }
-        .product-card h3 { margin-top: 0; }
-        .price { font-weight: bold; font-size: 1.2rem; }
-        .badge {
-            display: inline-block; background: #dbeafe; color: #1e40af; padding: 5px 10px; border-radius: 999px;
-            font-size: 0.8rem; margin-bottom: 12px;
-        }
-        .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0; }
-        .filters form { display: flex; gap: 8px; flex-wrap: wrap; }
-        input, button {
-            padding: 10px 12px; border-radius: 8px; border: 1px solid #d1d5db;
-            font-size: 1rem;
-        }
-        button {
-            background: #111827; color: white; cursor: pointer;
-        }
-        .product-detail { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; }
-        .meta { margin-top: 16px; }
-        .section-title { margin: 24px 0 16px; }
-        .cart-badge {
-            background: #f59e0b; color: #111827; font-weight: bold; padding: 6px 10px; border-radius: 999px;
-        }
-        .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
-        .btn { display: inline-block; background: #111827; color: white; padding: 10px 14px; border-radius: 8px; }
-        .btn-secondary { background: #e5e7eb; color: #111827; }
-        .messages { list-style: none; padding: 0; margin: 0 0 20px; }
-        .messages li { padding: 10px 12px; margin-bottom: 8px; border-radius: 8px; }
-        .messages .success { background: #dcfce7; color: #166534; }
-        .messages .info { background: #dbeafe; color: #1e3a8a; }
-        .messages .warning { background: #fef3c7; color: #92400e; }
-        .messages .error { background: #fee2e2; color: #991b1b; }
-        table { width: 100%; border-collapse: collapse; background: white; }
-        th, td { padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-        @media (max-width: 768px) {
-            .product-detail { grid-template-columns: 1fr; }
-        }
-    </style>
+    <meta name="theme-color" content="#f7f6f0">
+    <title>{% block title %}Sklep z doniczkami{% endblock %}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'sklepzdoniczkami/css/store.css' %}">
 </head>
 <body>
+    <div class="announcement">Rośliny i dodatki, które zamieniają dom w zieloną przestrzeń</div>
     <header class="topbar">
         <div class="container nav">
-            <div class="brand"><a href="{% url 'sklepzdoniczkami:home' %}">Sklepzdoniczkami</a></div>
-            <nav class="nav-links">
-                <a href="{% url 'sklepzdoniczkami:home' %}">Strona główna</a>
+            <a class="brand" href="{% url 'sklepzdoniczkami:home' %}">
+                <span class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 40 40"><path d="M20 31V17m0 7c-8 0-12-5-12-13 8 0 12 4 12 11m0-3c0-8 4-12 12-12 0 8-4 12-12 12" /></svg>
+                </span>
+                <span>sklep<span class="brand-light">zdoniczkami</span></span>
+            </a>
+            <nav class="nav-links" aria-label="Nawigacja główna">
+                <a href="{% url 'sklepzdoniczkami:home' %}">Sklep</a>
                 {% for category in categories %}
                     <a href="{{ category.get_absolute_url }}">{{ category.name }}</a>
                 {% endfor %}
-                <a href="{% url 'sklepzdoniczkami:cart' %}">Koszyk <span class="cart-badge">{{ request.session.cart|length|default:0 }}</span></a>
                 {% if user.is_authenticated %}
-                    <a href="{% url 'sklepzdoniczkami:profile' %}">Profil</a>
+                    <a href="{% url 'sklepzdoniczkami:profile' %}">Moje konto</a>
                     <a href="{% url 'sklepzdoniczkami:logout' %}">Wyloguj</a>
                 {% else %}
                     <a href="{% url 'sklepzdoniczkami:login' %}">Zaloguj</a>
-                    <a href="{% url 'sklepzdoniczkami:register' %}">Rejestracja</a>
                 {% endif %}
+                <a class="nav-cart" href="{% url 'sklepzdoniczkami:cart' %}" aria-label="Koszyk, {{ request.session.cart|length|default:0 }} produktów">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.1a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L21 8H6m4 11h.01M17 19h.01" /></svg>
+                    <span>Koszyk</span><span class="cart-badge">{{ request.session.cart|length|default:0 }}</span>
+                </a>
             </nav>
         </div>
     </header>
-    <main class="container">
+    <main>
         {% if messages %}
-            <ul class="messages">
-                {% for message in messages %}
-                    <li class="{{ message.tags }}">{{ message }}</li>
-                {% endfor %}
-            </ul>
+            <div class="container message-wrap">
+                <ul class="messages">
+                    {% for message in messages %}
+                        <li class="{{ message.tags }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
         {% endif %}
         {% block content %}{% endblock %}
     </main>
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <a class="brand footer-brand" href="{% url 'sklepzdoniczkami:home' %}"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M20 31V17m0 7c-8 0-12-5-12-13 8 0 12 4 12 11m0-3c0-8 4-12 12-12 0 8-4 12-12 12" /></svg></span><span>sklep<span class="brand-light">zdoniczkami</span></span></a>
+            <p>Małe zielone rzeczy, które robią dużą różnicę.</p>
+            <span>© {% now "Y" %} Sklep z doniczkami</span>
+        </div>
+    </footer>
 </body>
 </html>
