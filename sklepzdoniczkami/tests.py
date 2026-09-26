@@ -1,4 +1,5 @@
 from importlib import import_module
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -34,21 +35,46 @@ class PreprodSeedCommandTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("seed_preprod_data")
 
-        self.assertEqual(Category.objects.count(), 0)
-        self.assertEqual(Product.objects.count(), 0)
+        self.assertFalse(Category.objects.filter(slug__startswith="preprod-").exists())
+        self.assertFalse(Product.objects.filter(slug__startswith="preprod-").exists())
 
     @override_settings(APP_ENV="preprod")
     def test_seed_command_creates_only_idempotent_synthetic_catalogue(self):
         call_command("seed_preprod_data", verbosity=0)
         call_command("seed_preprod_data", verbosity=0)
 
-        self.assertEqual(Category.objects.count(), 2)
-        self.assertEqual(Product.objects.count(), 3)
+        self.assertEqual(Category.objects.filter(slug__startswith="preprod-").count(), 2)
+        self.assertEqual(Product.objects.filter(slug__startswith="preprod-").count(), 3)
         self.assertFalse(get_user_model().objects.exists())
         self.assertFalse(Order.objects.exists())
         self.assertTrue(
             Product.objects.filter(slug="preprod-monstera-deliciosa").exists()
         )
+
+
+class SampleProductCommandTests(TestCase):
+    def test_sample_products_are_idempotent_and_development_only(self):
+        with TemporaryDirectory() as media_root:
+            with override_settings(
+                APP_ENV="development",
+                MEDIA_ROOT=media_root,
+                MEDIA_URL="/media/",
+            ):
+                call_command("load_sample_products", verbosity=0)
+                call_command("load_sample_products", verbosity=0)
+
+            products = Product.objects.filter(is_active=True)
+            self.assertEqual(products.count(), 5)
+            self.assertTrue(
+                all(product.image.startswith("/media/products/") for product in products)
+            )
+
+    @override_settings(APP_ENV="preprod")
+    def test_sample_products_command_refuses_to_run_outside_development(self):
+        with self.assertRaises(CommandError):
+            call_command("load_sample_products")
+
+        self.assertFalse(Product.objects.filter(is_active=True).exists())
 
 
 class ProductCatalogTests(TestCase):

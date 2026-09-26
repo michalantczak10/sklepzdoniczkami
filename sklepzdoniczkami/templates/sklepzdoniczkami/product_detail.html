@@ -1,4 +1,5 @@
 {% extends 'sklepzdoniczkami/base.html' %}
+{% load static %}
 
 {% block title %}{{ product.name }}{% endblock %}
 
@@ -20,9 +21,9 @@
                 <span class="art-category">{{ product.category.name }}</span>
             </div>
             <section class="detail-copy">
-                <span class="eyebrow">Mały zielony wybór</span>
+                <span class="eyebrow">Poznaj naszą kolekcję doniczek</span>
                 <h1>{{ product.name }}</h1>
-                <p>{{ product.description|default:"Piękny, naturalny akcent, który wniesie do Twojego domu odrobinę zieleni i codziennej radości." }}</p>
+                <p>{{ product.description|default:"Starannie wybrana doniczka do domu, na balkon lub taras." }}</p>
                 <a class="text-link" href="{{ product.category.get_absolute_url }}">Zobacz więcej z kategorii {{ product.category.name }} →</a>
             </section>
             <aside class="purchase-card">
@@ -58,11 +59,11 @@
                 <article class="product-card">
                     <a class="product-art" href="{{ item.get_absolute_url }}" aria-label="Zobacz produkt {{ item.name }}">
                         <span class="product-art-orbit"></span>
-                        <svg viewBox="0 0 240 220" aria-hidden="true">
-                            <path class="plant-stem" d="M120 156V53m0 81c-33-31-53-42-80-43m81 29c28-38 48-53 79-61m-80 29c-8-31-20-49-44-65m44 74c17-32 36-48 62-57" />
-                            <path class="plant-leaf leaf-one" d="M39 91c28-7 55 8 82 43-33 11-62-2-82-43Zm81 3c15-36 41-57 82-64-9 40-35 61-82 64Zm0-30c4-31 21-53 48-68 3 31-13 53-48 68Zm-5 71c-20-26-43-37-76-36 11 31 37 44 76 36Z" />
-                            <path class="plant-pot" d="M83 153h74l-8 54H91l-8-54Zm-6-10h86v13H77z" />
-                        </svg>
+                        {% if item.image %}
+                            <img class="product-image" src="{{ item.image }}" alt="{{ item.name }}" loading="lazy">
+                        {% else %}
+                            <img class="product-image" src="{% static 'sklepzdoniczkami/img/pot-placeholder.svg' %}" alt="{{ item.name }}" loading="lazy">
+                        {% endif %}
                         <span class="art-category">{{ item.category.name }}</span>
                     </a>
                     <div class="product-info">
