@@ -69,8 +69,9 @@ Update 2026-09-29 20:47:26:
   uwierzytelnienie nie działało. Utworzono `sklepzdoniczkami_prod_backup` bez
   CREATEDB/CREATEROLE/REPLICATION/superuser, przyznano mu dostęp przez
   `pg_read_all_data` i zapisano połączenie w `DATABASE_URL_PRODUCTION_BACKUP`.
-  Połączenie i ograniczone uprawnienia sprawdzono. Ręczny test workflow z
-  branchu PR został zablokowany ochroną GitHub Environment `production`;
+  Połączenie i ograniczone uprawnienia sprawdzono; workflow porównuje również
+  host z `PRODUCTION_DATABASE_HOST` w środowisku `production`. Ręczny test
+  workflow z branchu PR został zablokowany ochroną GitHub Environment `production`;
   backup workflow wymaga dozwolonego brancha. Baza Neon `prod` była bez tabel
   publicznych, więc nie potwierdzono zawartości backupu ani zgodności z
   aktualnym URL-em działającej usługi.

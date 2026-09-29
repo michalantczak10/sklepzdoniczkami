@@ -22,8 +22,10 @@ env:
 
 jobs:
   test:
-    name: Django tests (Neon dev)
+    name: Django tests
     runs-on: ubuntu-24.04
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci-pr' || 'development' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -41,7 +43,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_RO }}
-          EXPECTED_DATABASE_NAME: ${{ secrets.DATABASE_NAME_DEVELOPMENT }}
+          EXPECTED_DATABASE_NAME: sklepzdoniczkami_dev
         run: |
           python - <<'PY'
           import os
@@ -79,7 +81,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DATABASE_URL_DEVELOPMENT: ${{ secrets.DATABASE_URL_DEVELOPMENT }}
-          DATABASE_NAME_DEVELOPMENT: ${{ secrets.DATABASE_NAME_DEVELOPMENT }}
+          DATABASE_NAME_DEVELOPMENT: sklepzdoniczkami_dev
         run: python manage.py makemigrations --check --dry-run
 
       - name: Check migrations for pull requests
@@ -90,7 +92,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DATABASE_URL_DEVELOPMENT: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
-          DATABASE_NAME_DEVELOPMENT: ${{ secrets.DATABASE_NAME_DEVELOPMENT }}
+          DATABASE_NAME_DEVELOPMENT: sklepzdoniczkami_dev
           DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
         run: pytest -q --ds=config.settings
 
@@ -108,6 +110,8 @@ jobs:
   e2e:
     name: End-to-end tests (Playwright)
     runs-on: ubuntu-24.04
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci-pr' || 'development' }}
     needs: test
     steps:
       - uses: actions/checkout@v7
@@ -129,7 +133,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           echo "DATABASE_URL_DEVELOPMENT=${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}" >> $GITHUB_ENV
-          echo "DATABASE_NAME_DEVELOPMENT=${{ secrets.DATABASE_NAME_DEVELOPMENT }}" >> $GITHUB_ENV
+          echo "DATABASE_NAME_DEVELOPMENT=sklepzdoniczkami_dev" >> $GITHUB_ENV
           echo "DJANGO_TEST_DATABASE_NAME=test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}" >> $GITHUB_ENV
 
       - name: Run end-to-end tests on Neon
