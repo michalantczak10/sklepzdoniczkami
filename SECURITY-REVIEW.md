@@ -13,11 +13,11 @@ wyłącznie syntetyczne rekordy katalogu tworzone przez `seed_preprod_data`.
 - Produkcja i preprod muszą wskazywać odrębne bazy Neon. Preprod wymaga bazy
   `sklepzdoniczkami_preprod`, a produkcja `sklepzdoniczkami_prod`; aplikacja
   odrzuci URL do bazy o innej nazwie.
-- Render preprod używa `DATABASE_URL_PREPROD` jako roli
-  `sklepzdoniczkami_preprod_web_limited` i
-  `DATABASE_URL_PREPROD_MIGRATE` jako roli
-  `sklepzdoniczkami_preprod_migrate_limited` wyłącznie podczas migracji builda.
-  Nie udostępniaj URL-a migracyjnego aplikacji ani nie zapisuj go w Git.
+- Render preprod używa wyłącznie `DATABASE_URL_PREPROD` jako roli
+  `sklepzdoniczkami_preprod_web_limited`. `DATABASE_URL_PREPROD_MIGRATE` jako
+  `sklepzdoniczkami_preprod_migrate_limited` przechowuj w GitHub Environment
+  `preprod` i udostępniaj wyłącznie jobowi migracji na push do `dev`; nigdy
+  procesowi web ani pull-requestom. Nie zapisuj URL-i w Git.
 - Nie kopiuj produkcyjnych zrzutów do preprod; nie używaj tam starych URL-i ani
   danych z poprzedniego środowiska staging.
 - Backupy są artefaktami GitHub Actions z retencją 90 dni; nie zastępują

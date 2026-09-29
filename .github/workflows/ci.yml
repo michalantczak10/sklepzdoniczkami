@@ -129,3 +129,41 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
           DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
         run: python scripts/drop_test_database.py
+
+  preprod-migrations:
+    name: Preprod database migrations
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    needs: [test, e2e]
+    environment: preprod
+    env:
+      APP_ENV: preprod
+      DEBUG: "False"
+      ALLOWED_HOSTS: localhost
+      CSRF_TRUSTED_ORIGINS: https://sklepzdoniczkami-preprod.onrender.com
+      SITE_NAME: Sklepzdoniczkami Preprod
+      DATABASE_NAME_PREPROD: sklepzdoniczkami_preprod
+      DATABASE_URL_PREPROD: ${{ secrets.DATABASE_URL_PREPROD_MIGRATE }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set ephemeral Django key
+        run: python -c "import secrets; print('DJANGO_SECRET_KEY_PREPROD=' + secrets.token_urlsafe(48))" >> "$GITHUB_ENV"
+
+      - name: Apply preprod migrations
+        run: |
+          if [ -z "$DATABASE_URL_PREPROD" ]; then
+            echo "DATABASE_URL_PREPROD_MIGRATE is required in the preprod environment" >&2
+            exit 1
+          fi
+          python manage.py migrate --noinput

@@ -85,10 +85,13 @@ początkowo pustej bazy. Wypełnia ją wyłącznie idempotentny katalog
 syntetycznych produktów; nie kopiuj do niej backupów ani danych produkcyjnych.
 Rola `sklepzdoniczkami_preprod_web_limited` ma prawa DML, a
 `sklepzdoniczkami_preprod_migrate_limited` jest właścicielem tej bazy i służy
-tylko do migracji podczas builda. Obie role nie mają uprawnień administratora
-Neon ani praw tworzenia baz lub ról. W Renderze ustaw obie zmienne `DATABASE_URL_PREPROD` i
-`DATABASE_URL_PREPROD_MIGRATE` na właściwe połączenia Neon. `sync: false` nie
-aktualizuje istniejących sekretów przy kolejnej synchronizacji Blueprintu.
+tylko do migracji. Obie role nie mają uprawnień administratora Neon ani praw
+tworzenia baz lub ról. Render otrzymuje wyłącznie `DATABASE_URL_PREPROD` dla
+ograniczonej roli web. Migracje wykonuje CI po testach i E2E, na push do `dev`,
+korzystając z sekretu `DATABASE_URL_PREPROD_MIGRATE` w GitHub Environment
+`preprod`. URL migracyjny nie może być dostępny procesowi web w Renderze.
+`sync: false` nie aktualizuje istniejących sekretów przy kolejnej synchronizacji
+Blueprintu.
 
 Zmiany trafiają przez pull request do gałęzi GitHub `dev`; CI uruchamia testy,
 a Render wdraża preprod z `dev` dopiero po przejściu kontroli. Po smoke testach
@@ -117,10 +120,10 @@ GitHub Actions potrzebuje sekretów:
   `BACKUP_HMAC_KEY` do backupu produkcji. URL backupu używa osobnej roli
   `sklepzdoniczkami_prod_backup`, a nie poświadczeń aplikacji.
 
-Połączenia Neon preprod są sekretami **Rendera**, nie GitHub Actions:
-`DATABASE_URL_PREPROD` jest URL-em aplikacyjnym, a `DATABASE_URL_PREPROD_MIGRATE`
-jest używany wyłącznie w komendzie builda. Nie umieszczaj ich w repozytorium ani
-nie używaj URL-a migracyjnego jako połączenia aplikacji.
+`DATABASE_URL_PREPROD` jest sekretem Rendera. `DATABASE_URL_PREPROD_MIGRATE`
+jest sekretem GitHub Environment `preprod` i trafia wyłącznie do joba migracji
+uruchamianego po zaufanym pushu na `dev`, nigdy do pull-requestów ani procesu
+web. Nie umieszczaj żadnego z tych URL-i w repozytorium.
 
 Nie używaj `DATABASE_URL_DEVELOPMENT_TEST` jako połączenia sklepu ani nie
 kopiuj sekretów production do CI testowego. GitHub nie pozwala odczytać

@@ -37,7 +37,7 @@ services:
     plan: free
     branch: dev
     autoDeployTrigger: checksPass
-    buildCommand: pip install -r requirements.txt && test -n "$DATABASE_URL_PREPROD" && test -n "$DATABASE_URL_PREPROD_MIGRATE" && python manage.py collectstatic --noinput && python manage.py rename_shop_label && DATABASE_URL_PREPROD="$DATABASE_URL_PREPROD_MIGRATE" python manage.py migrate --noinput && python manage.py seed_preprod_data
+    buildCommand: pip install -r requirements.txt && test -n "$DATABASE_URL_PREPROD" && python manage.py collectstatic --noinput && python manage.py rename_shop_label && python manage.py seed_preprod_data
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SECRET_KEY_PREPROD
@@ -55,8 +55,6 @@ services:
       - key: SITE_NAME
         value: "Sklepzdoniczkami Preprod"
       - key: DATABASE_URL_PREPROD
-        sync: false
-      - key: DATABASE_URL_PREPROD_MIGRATE
         sync: false
       - key: STRIPE_SECRET_KEY_PREPROD
         sync: false

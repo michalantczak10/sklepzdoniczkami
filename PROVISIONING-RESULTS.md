@@ -29,10 +29,13 @@ Zweryfikowano: 2026-09-29
 - Początkowe role utworzone przez Neon API miały nadmierne uprawnienia;
   zastąpiono je rolami SQL bez `CREATEDB`, `CREATEROLE`, `REPLICATION`,
   `BYPASSRLS` ani członkostwa w `neon_superuser`, a stare role usunięto.
-- Połączenia obu ról są wyłącznie w lokalnym, ignorowanym `.env`. Render API
-  nie jest skonfigurowane w tym środowisku; dodaj w usłudze
-  `sklepzdoniczkami-preprod` zmienne `DATABASE_URL_PREPROD` oraz
-  `DATABASE_URL_PREPROD_MIGRATE` z tego pliku przed synchronizacją/wdrożeniem.
+- Połączenia obu ról są w lokalnym, ignorowanym `.env`. `DATABASE_URL_PREPROD`
+  należy ustawić w usłudze Render, a `DATABASE_URL_PREPROD_MIGRATE` jako sekret
+  GitHub Environment `preprod`; workflow udostępnia go wyłącznie jobowi migracji
+  na zaufanym pushu do `dev`.
+- Render API nie jest skonfigurowane w tym środowisku. Usługa publiczna
+  `sklepzdoniczkami-preprod.onrender.com` odpowiadała HTTP 500; nie można było
+  odczytać jej logów ani zaktualizować runtime URL-a z powodu braku API tokena.
 - Blueprint wskazuje gałąź GitHub `dev` dla preprod i wdraża po przejściu CI;
   produkcja z `main` wymaga ręcznego wdrożenia po promocji sprawdzonego kodu
   przez PR `dev` → `main`.
