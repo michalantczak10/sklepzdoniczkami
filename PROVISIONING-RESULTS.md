@@ -21,3 +21,10 @@ Uwagi:
 - Pełna automatyzacja wymaga NEON API z prawami admina lub aktywnego compute endpoint.
 
 Chętnie dokończę automat po aktywacji compute lub po otrzymaniu (bezpiecznie) admin NEON API key — daj znać jak chcesz dalej.
+
+---
+Update 2026-09-29 20:24:38:
+- PR comments added (neon-provisioner, tests-runner, secrets-sync).
+- NEON_API_KEY synced to GitHub Secrets (if present).
+- tmp-cred-* credentials cleanup attempted on dev branch.
+- Tried to create owner credential to obtain connection_string; plaintext owner connection_string NOT returned — compute likely inactive. Please activate compute in Neon Console.
