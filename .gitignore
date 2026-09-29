@@ -20,5 +20,6 @@ playwright-report/
 artifacts/
 backup.dump*
 db-backup-files-*.tgz
+/session-artifacts/
 
 # local dev sqlite DB
