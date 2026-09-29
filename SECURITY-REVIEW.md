@@ -7,9 +7,12 @@ wyłącznie syntetyczne rekordy katalogu tworzone przez `seed_preprod_data`.
 
 ## Wymagane zabezpieczenia operacyjne
 
-- `DATABASE_URL_PRODUCTION`, `BACKUP_ENCRYPTION_KEY_PRODUCTION` i
-  `BACKUP_HMAC_KEY_PRODUCTION` przechowuj jako sekrety środowiska GitHub
-  `production`; są używane tylko przez workflow backupu.
+- `DATABASE_URL_PRODUCTION_BACKUP`, `BACKUP_ENCRYPTION_KEY` i
+  `BACKUP_HMAC_KEY` przechowuj jako sekrety środowiska GitHub `production`;
+  workflow backupu używa roli read-only, a nie poświadczeń aplikacji.
+- Przed zrzutem workflow wymaga bazy `sklepzdoniczkami_prod` oraz tabel
+  `django_migrations` i `sklepzdoniczkami_product`; pusty lub błędnie wskazany
+  cel backupu kończy się błędem zamiast tworzyć pozornie prawidłowy artefakt.
 - Produkcja i preprod muszą wskazywać odrębne bazy Neon. Preprod wymaga bazy
   `sklepzdoniczkami_preprod`, a produkcja `sklepzdoniczkami_prod`; aplikacja
   odrzuci URL do bazy o innej nazwie.

@@ -75,8 +75,10 @@ Update 2026-09-29 20:47:26:
   publicznych, więc nie potwierdzono zawartości backupu ani zgodności z
   aktualnym URL-em działającej usługi.
 - Na branchu `prod` endpoint może być `idle`; Neon automatycznie go uruchamia
-  przy połączeniu. Baza `sklepzdoniczkami_prod` nie miała jeszcze tabel publicznych
-  podczas weryfikacji, więc backup będzie zawierał aktualny stan tej bazy.
+  przy połączeniu. Baza `sklepzdoniczkami_prod` nie miała tabel publicznych,
+  a zgodność jej URL-a z usługą live nie była potwierdzona. Backup workflow
+  odrzuca teraz pustą bazę i brak wymaganych tabel zamiast tworzyć pozornie
+  poprawny artefakt; skonfiguruj URL do właściwej, zmigrowanej bazy produkcyjnej.
 - CI uruchomione z PR po zmianach przeszło: testy Django na Neon PostgreSQL,
   kontrola migracji i Playwright E2E (również po przełączeniu sekretu aplikacji
   na ograniczoną rolę `sklepzdoniczkami_dev_web`).

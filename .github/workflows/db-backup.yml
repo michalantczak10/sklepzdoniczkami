@@ -37,7 +37,16 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/work" \
             --workdir /work \
             postgres:18 sh -euc \
-            'pg_dump --dbname="$DATABASE_URL_PRODUCTION_BACKUP" --format=custom --file=backup.dump'
+            '
+            actual_database=$(psql "$DATABASE_URL_PRODUCTION_BACKUP" -Atqc "SELECT current_database()")
+            if [ "$actual_database" != "sklepzdoniczkami_prod" ]; then
+              echo "Backup URL does not point to sklepzdoniczkami_prod." >&2
+              exit 1
+            fi
+            psql "$DATABASE_URL_PRODUCTION_BACKUP" -v ON_ERROR_STOP=1 -c "SELECT 1 FROM public.django_migrations LIMIT 0" >/dev/null
+            psql "$DATABASE_URL_PRODUCTION_BACKUP" -v ON_ERROR_STOP=1 -c "SELECT 1 FROM public.sklepzdoniczkami_product LIMIT 0" >/dev/null
+            pg_dump --dbname="$DATABASE_URL_PRODUCTION_BACKUP" --format=custom --file=backup.dump
+            '
 
           openssl enc -aes-256-cbc -pbkdf2 -salt \
             -in backup.dump -out backup.dump.enc \
