@@ -40,3 +40,8 @@ Update 2026-09-29 20:36:27:
   - sklepzdoniczkami_dev_migrate -> role: sklepzdoniczkami_dev_migrate_auto_a09aca27 (grants: True)
   - sklepzdoniczkami_dev_ro -> role: sklepzdoniczkami_dev_ro_auto_dd19df6a (grants: True)
 
+
+Update 2026-09-29 20:47:26:
+- Local test run using config.settings_test (SQLite): 44 passed, 6 warnings.
+- Note: Neon blocks CREATE DATABASE for managed roles; to run tests against Neon you must pre-create a test database or enable compute / provide admin NEON API key.
+
