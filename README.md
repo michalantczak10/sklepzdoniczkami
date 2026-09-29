@@ -90,6 +90,8 @@ tworzenia baz lub ról. Render otrzymuje wyłącznie `DATABASE_URL_PREPROD` dla
 ograniczonej roli web. Migracje wykonuje CI po testach i E2E, na push do `dev`,
 korzystając z sekretu `DATABASE_URL_PREPROD_MIGRATE` w GitHub Environment
 `preprod`. URL migracyjny nie może być dostępny procesowi web w Renderze.
+Środowisko GitHub `preprod` ma dodatkowo regułę deployment branch ograniczoną
+do `dev`, więc pull request z innej gałęzi nie otrzyma tego sekretu.
 `sync: false` nie aktualizuje istniejących sekretów przy kolejnej synchronizacji
 Blueprintu.
 

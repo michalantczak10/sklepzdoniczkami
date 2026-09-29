@@ -31,8 +31,8 @@ Zweryfikowano: 2026-09-29
   `BYPASSRLS` ani członkostwa w `neon_superuser`, a stare role usunięto.
 - Połączenia obu ról są w lokalnym, ignorowanym `.env`. `DATABASE_URL_PREPROD`
   należy ustawić w usłudze Render, a `DATABASE_URL_PREPROD_MIGRATE` jako sekret
-  GitHub Environment `preprod`; workflow udostępnia go wyłącznie jobowi migracji
-  na zaufanym pushu do `dev`.
+  GitHub Environment `preprod`, ograniczonym regułą deployment branch do `dev`;
+  workflow udostępnia go wyłącznie jobowi migracji na pushu do `dev`.
 - Render API nie jest skonfigurowane w tym środowisku. Usługa publiczna
   `sklepzdoniczkami-preprod.onrender.com` odpowiadała HTTP 500; nie można było
   odczytać jej logów ani zaktualizować runtime URL-a z powodu braku API tokena.

@@ -16,8 +16,9 @@ wyłącznie syntetyczne rekordy katalogu tworzone przez `seed_preprod_data`.
 - Render preprod używa wyłącznie `DATABASE_URL_PREPROD` jako roli
   `sklepzdoniczkami_preprod_web_limited`. `DATABASE_URL_PREPROD_MIGRATE` jako
   `sklepzdoniczkami_preprod_migrate_limited` przechowuj w GitHub Environment
-  `preprod` i udostępniaj wyłącznie jobowi migracji na push do `dev`; nigdy
-  procesowi web ani pull-requestom. Nie zapisuj URL-i w Git.
+  `preprod`, ograniczonym deployment branch do `dev`, i udostępniaj wyłącznie
+  jobowi migracji na push do `dev`; nigdy procesowi web ani pull-requestom.
+  Nie zapisuj URL-i w Git.
 - Nie kopiuj produkcyjnych zrzutów do preprod; nie używaj tam starych URL-i ani
   danych z poprzedniego środowiska staging.
 - Backupy są artefaktami GitHub Actions z retencją 90 dni; nie zastępują
