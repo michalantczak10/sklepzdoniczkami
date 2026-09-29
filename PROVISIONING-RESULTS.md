@@ -28,3 +28,9 @@ Update 2026-09-29 20:24:38:
 - NEON_API_KEY synced to GitHub Secrets (if present).
 - tmp-cred-* credentials cleanup attempted on dev branch.
 - Tried to create owner credential to obtain connection_string; plaintext owner connection_string NOT returned — compute likely inactive. Please activate compute in Neon Console.
+
+Update 2026-09-29 20:34:09:
+- Attempted to create credentials for roles: sklepzdoniczkami_dev_migrate, sklepzdoniczkami_dev_ro.
+- Migrate role: no plaintext returned via API; manual action (Console/admin) may be required.
+- Read-only role: no plaintext returned via API; manual action may be required.
+
