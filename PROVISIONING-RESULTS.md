@@ -33,8 +33,9 @@ Zweryfikowano: 2026-09-29
   nie jest skonfigurowane w tym środowisku; dodaj w usłudze
   `sklepzdoniczkami-preprod` zmienne `DATABASE_URL_PREPROD` oraz
   `DATABASE_URL_PREPROD_MIGRATE` z tego pliku przed synchronizacją/wdrożeniem.
-- Blueprint wdraża preprod po przejściu kontroli CI, a produkcję pozostawia
-  do ręcznego wdrożenia tego samego, zweryfikowanego commita.
+- Blueprint wskazuje gałąź GitHub `dev` dla preprod i wdraża po przejściu CI;
+  produkcja z `main` wymaga ręcznego wdrożenia po promocji sprawdzonego kodu
+  przez PR `dev` → `main`.
 
 ## Backup produkcji
 

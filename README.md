@@ -90,11 +90,12 @@ Neon ani praw tworzenia baz lub ról. W Renderze ustaw obie zmienne `DATABASE_UR
 `DATABASE_URL_PREPROD_MIGRATE` na właściwe połączenia Neon. `sync: false` nie
 aktualizuje istniejących sekretów przy kolejnej synchronizacji Blueprintu.
 
-Preprod wdraża zmiany z `main` dopiero po przejściu kontroli GitHub Actions.
-Automatyczne wdrożenia produkcji są wyłączone: po sprawdzeniu preprod wdrażaj
-w Renderze **ten sam commit** ręcznie na produkcję. Stripe na preprod używa
-wyłącznie kompletu kluczy testowych; gdy ich nie ustawiono, płatność kartą jest
-wyłączona.
+Zmiany trafiają przez pull request do gałęzi GitHub `dev`; CI uruchamia testy,
+a Render wdraża preprod z `dev` dopiero po przejściu kontroli. Po smoke testach
+preprod promuj sprawdzony kod przez pull request `dev` → `main`. Automatyczne
+wdrożenia produkcji są wyłączone; po scaleniu wdrażaj w Renderze ręcznie commit
+z `main`. Stripe na preprod używa wyłącznie kompletu kluczy testowych; gdy ich
+nie ustawiono, płatność kartą jest wyłączona.
 
 Sekrety aplikacji używają sufiksów `_DEVELOPMENT`, `_PREPROD` lub
 `_PRODUCTION`. Dotyczy to `DATABASE_URL`, `DJANGO_SECRET_KEY` i kluczy Stripe.
