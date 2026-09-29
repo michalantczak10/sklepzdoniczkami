@@ -25,32 +25,47 @@ APP_ENV = os.environ.get('APP_ENV', 'development').strip().lower()
 if APP_ENV not in {'development', 'preprod', 'production'}:
     raise ImproperlyConfigured('APP_ENV must be development, preprod, or production.')
 
+ENV_SUFFIX = APP_ENV.upper()
+
+
+def env_value(name, default=None):
+    return os.environ.get(f'{name}_{ENV_SUFFIX}', default)
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-ew3ox9x+(5*j2p5p9sbdk=y4%bc%g1x%ld)-mf#nwv^s%+@wce')
+SECRET_KEY = env_value(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-ew3ox9x+(5*j2p5p9sbdk=y4%bc%g1x%ld)-mf#nwv^s%+@wce',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') if os.environ.get('ALLOWED_HOSTS') else ['*']
 if APP_ENV in {'preprod', 'production'}:
-    if not os.environ.get('DATABASE_URL'):
-        raise ImproperlyConfigured(f'DATABASE_URL is required when APP_ENV={APP_ENV}.')
-    if not os.environ.get('DJANGO_SECRET_KEY'):
-        raise ImproperlyConfigured(f'DJANGO_SECRET_KEY is required when APP_ENV={APP_ENV}.')
+    if not env_value('DATABASE_URL'):
+        raise ImproperlyConfigured(f'DATABASE_URL_{ENV_SUFFIX} is required.')
+    if not env_value('DJANGO_SECRET_KEY'):
+        raise ImproperlyConfigured(f'DJANGO_SECRET_KEY_{ENV_SUFFIX} is required.')
     if DEBUG:
         raise ImproperlyConfigured(f'DEBUG must be False when APP_ENV={APP_ENV}.')
     if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
         raise ImproperlyConfigured(f'ALLOWED_HOSTS must be explicitly configured when APP_ENV={APP_ENV}.')
-if APP_ENV == 'preprod':
-    expected_database_name = os.environ.get('PREPROD_DATABASE_NAME')
-    actual_database_name = dj_database_url.parse(os.environ['DATABASE_URL'])['NAME']
-    if not expected_database_name or actual_database_name != expected_database_name:
+
+if env_value('DATABASE_URL'):
+    actual_database_name = dj_database_url.parse(env_value('DATABASE_URL'))['NAME']
+    expected_database_name = env_value('DATABASE_NAME')
+    if APP_ENV in {'preprod', 'production'} and not expected_database_name:
         raise ImproperlyConfigured(
-            'Preprod DATABASE_URL must point to the dedicated '
-            f'{expected_database_name or "PREPROD_DATABASE_NAME"} database.'
+            f'DATABASE_NAME_{ENV_SUFFIX} is required when DATABASE_URL_{ENV_SUFFIX} is set.'
+        )
+    if expected_database_name and actual_database_name != expected_database_name:
+        raise ImproperlyConfigured(
+            f'DATABASE_URL_{ENV_SUFFIX} must point to the '
+            f'{expected_database_name} database.'
         )
 
 CSRF_TRUSTED_ORIGINS = os.environ.get(
@@ -82,10 +97,12 @@ def validate_stripe_configuration(app_env, secret_key, public_key, webhook_secre
         return False
     if not all(keys):
         raise ImproperlyConfigured(
-            'Configure all three Stripe secrets or leave them all unset.'
+            f'Configure all three STRIPE_*_{app_env.upper()} secrets or leave them all unset.'
         )
     if not webhook_secret.startswith('whsec_'):
-        raise ImproperlyConfigured('STRIPE_WEBHOOK_SECRET must be a Stripe webhook secret.')
+        raise ImproperlyConfigured(
+            f'STRIPE_WEBHOOK_SECRET_{app_env.upper()} must be a Stripe webhook secret.'
+        )
 
     expected_prefixes = {
         'preprod': ('sk_test_', 'pk_test_'),
@@ -110,9 +127,9 @@ def validate_stripe_configuration(app_env, secret_key, public_key, webhook_secre
     return True
 
 
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '').strip()
-STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', '').strip()
-STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '').strip()
+STRIPE_SECRET_KEY = env_value('STRIPE_SECRET_KEY', '').strip()
+STRIPE_PUBLIC_KEY = env_value('STRIPE_PUBLIC_KEY', '').strip()
+STRIPE_WEBHOOK_SECRET = env_value('STRIPE_WEBHOOK_SECRET', '').strip()
 STRIPE_ENABLED = validate_stripe_configuration(
     APP_ENV,
     STRIPE_SECRET_KEY,
@@ -171,6 +188,7 @@ LOGOUT_REDIRECT_URL = 'sklepzdoniczkami:home'
 
 DATABASES = {
     'default': dj_database_url.config(
+        env=f'DATABASE_URL_{ENV_SUFFIX}',
         default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
         conn_max_age=600,
     )

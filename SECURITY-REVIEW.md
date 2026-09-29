@@ -7,11 +7,12 @@ wyłącznie syntetyczne rekordy katalogu tworzone przez `seed_preprod_data`.
 
 ## Wymagane zabezpieczenia operacyjne
 
-- `DATABASE_URL_PRODUCTION` przechowuj w sekrecie środowiska GitHub
-  `production`; `BACKUP_ENCRYPTION_KEY` i `BACKUP_HMAC_KEY` są sekretami
-  repozytorium używanymi tylko przez workflow backupu.
+- `DATABASE_URL_PRODUCTION`, `BACKUP_ENCRYPTION_KEY_PRODUCTION` i
+  `BACKUP_HMAC_KEY_PRODUCTION` przechowuj jako sekrety środowiska GitHub
+  `production`; są używane tylko przez workflow backupu.
 - Produkcja i preprod muszą wskazywać odrębne bazy Neon. Preprod wymaga bazy
-  `sklepzdoniczkami_preprod` i aplikacja odrzuci URL do bazy o innej nazwie.
+  `sklepzdoniczkami_preprod`, a produkcja `sklepzdoniczkami_prod`; aplikacja
+  odrzuci URL do bazy o innej nazwie.
 - Nie kopiuj produkcyjnych zrzutów do preprod; nie używaj tam starych URL-i ani
   danych z poprzedniego środowiska staging.
 - Backupy są artefaktami GitHub Actions z retencją 90 dni; nie zastępują
