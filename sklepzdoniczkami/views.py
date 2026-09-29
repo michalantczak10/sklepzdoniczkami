@@ -310,7 +310,10 @@ def checkout_view(request):
 def stripe_checkout(request, order_token):
     order = get_order_from_access_token(order_token)
     if not settings.STRIPE_ENABLED:
-        messages.error(request, "Stripe nie jest skonfigurowany. Ustaw STRIPE_SECRET_KEY w środowisku.")
+        messages.error(
+            request,
+            f"Stripe nie jest skonfigurowany. Ustaw STRIPE_SECRET_KEY_{settings.APP_ENV.upper()}.",
+        )
         return redirect("sklepzdoniczkami:checkout")
     if order.payment_method != "card" or order.is_paid or order.status != "pending":
         messages.error(request, "To zamówienie nie może rozpocząć płatności kartą.")

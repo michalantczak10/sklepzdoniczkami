@@ -1,38 +1,31 @@
-name: CI
+﻿name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
+
+permissions:
+  contents: read
 
 env:
   APP_ENV: development
-  DJANGO_SECRET_KEY: ci-test-secret-key
-  DATABASE_URL: postgres://test_user:test_pass@127.0.0.1:5432/test_db
+  DJANGO_SECRET_KEY_DEVELOPMENT: ci-test-secret-key
+  STRIPE_SECRET_KEY_DEVELOPMENT: sk_test_dummy
+  STRIPE_PUBLIC_KEY_DEVELOPMENT: pk_test_dummy
+  STRIPE_WEBHOOK_SECRET_DEVELOPMENT: whsec_dummy
   DEBUG: "True"
   ALLOWED_HOSTS: localhost,127.0.0.1
   CSRF_TRUSTED_ORIGINS: http://localhost,http://127.0.0.1
   SITE_NAME: Sklepzdoniczkami
-  STRIPE_SECRET_KEY: sk_test_dummy
-  STRIPE_PUBLIC_KEY: pk_test_dummy
-  STRIPE_WEBHOOK_SECRET: whsec_dummy
 
 jobs:
   test:
     name: Django tests
     runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_pass
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U test_user" --health-interval=10s --health-timeout=5s --health-retries=5
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci-pr' || 'development' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -46,30 +39,80 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Verify Neon dev read-only connection
+        if: github.event_name != 'pull_request'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_RO }}
+          EXPECTED_DATABASE_NAME: sklepzdoniczkami_dev
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg2
+
+          database_url = os.environ.get("DATABASE_URL")
+          if not database_url:
+              raise SystemExit("DATABASE_URL_DEVELOPMENT_RO is required")
+
+          with psycopg2.connect(database_url, connect_timeout=15) as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute(
+                      "SELECT current_database(), current_user, "
+                      "has_table_privilege(current_user, 'public.django_migrations', 'SELECT')"
+                  )
+                  database_name, database_user, can_read_migrations = cursor.fetchone()
+
+          expected_database = os.environ.get("EXPECTED_DATABASE_NAME")
+          if database_name != expected_database:
+              raise SystemExit(
+                  f"Connected to unexpected database {database_name!r}; "
+                  f"expected {expected_database!r}"
+              )
+          if "_ro" not in database_user:
+              raise SystemExit("Neon connectivity check did not use a read-only role")
+          if not can_read_migrations:
+              raise SystemExit("Neon read-only role cannot read Django migration metadata")
+          print(f"Connected to Neon development database {database_name} using a read-only role.")
+          PY
+
       - name: Run Django check
         run: python manage.py check
 
       - name: Check for missing migrations
+        if: github.event_name != 'pull_request'
+        env:
+          DATABASE_URL_DEVELOPMENT: ${{ secrets.DATABASE_URL_DEVELOPMENT }}
+          DATABASE_NAME_DEVELOPMENT: sklepzdoniczkami_dev
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Check migrations for pull requests
+        if: github.event_name == 'pull_request'
         run: python manage.py makemigrations --check --dry-run
 
       - name: Run tests
-        run: pytest -q
+        if: github.event_name != 'pull_request'
+        env:
+          DATABASE_URL_DEVELOPMENT: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
+          DATABASE_NAME_DEVELOPMENT: sklepzdoniczkami_dev
+          DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
+        run: pytest -q --ds=config.settings
+
+      - name: Run tests for pull requests
+        if: github.event_name == 'pull_request'
+        run: pytest -q --ds=config.settings_test
+
+      - name: Remove any remaining Neon test database
+        if: always() && github.event_name != 'pull_request'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
+          DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
+        run: python scripts/drop_test_database.py
 
   e2e:
     name: End-to-end tests (Playwright)
     runs-on: ubuntu-24.04
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci-pr' || 'development' }}
     needs: test
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_pass
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U test_user" --health-interval=10s --health-timeout=5s --health-retries=5
     steps:
       - uses: actions/checkout@v7
 
@@ -86,5 +129,24 @@ jobs:
       - name: Install Playwright browsers
         run: playwright install --with-deps chromium
 
-      - name: Run end-to-end tests
-        run: pytest e2e -m e2e --browser chromium
+      - name: Configure environment for e2e
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "DATABASE_URL_DEVELOPMENT=${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}" >> $GITHUB_ENV
+          echo "DATABASE_NAME_DEVELOPMENT=sklepzdoniczkami_dev" >> $GITHUB_ENV
+          echo "DJANGO_TEST_DATABASE_NAME=test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}" >> $GITHUB_ENV
+
+      - name: Run end-to-end tests on Neon
+        if: github.event_name != 'pull_request'
+        run: pytest e2e -m e2e --browser chromium --ds=config.settings
+
+      - name: Run end-to-end tests for pull requests
+        if: github.event_name == 'pull_request'
+        run: pytest e2e -m e2e --browser chromium --ds=config.settings_test
+
+      - name: Remove any remaining Neon e2e test database
+        if: always() && github.event_name != 'pull_request'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
+          DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
+        run: python scripts/drop_test_database.py
