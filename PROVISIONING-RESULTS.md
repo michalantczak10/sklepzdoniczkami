@@ -45,3 +45,28 @@ Update 2026-09-29 20:47:26:
 - Local test run using config.settings_test (SQLite): 44 passed, 6 warnings.
 - Note: Neon blocks CREATE DATABASE for managed roles; to run tests against Neon you must pre-create a test database or enable compute / provide admin NEON API key.
 
+## Aktualny stan zweryfikowany 2026-09-29
+
+- Neon API potwierdza, że branch `dev` jest `ready`, a compute endpoint jest `active`.
+- Stary sekret CI używał roli `sklepzdoniczkami_dev_migrate_auto_*`, która nie
+  mogła odczytać tabeli `django_migrations`; `makemigrations --check` kończył się
+  więc błędem uprawnień. Uprawnienia SELECT do obecnych tabel i sekwencji oraz
+  domyślne SELECT dla obiektów tworzonych przez właściciela aplikacji zostały
+  przyznane rolom diagnostyczną/read-only.
+- Właścicielem istniejącej schemy i tabel dev jest `sklepzdoniczkami_dev_app`,
+  nie rola owner. Zaktualizowano `DATABASE_URL_DEVELOPMENT` do roli aplikacyjnej.
+- Utworzono osobną rolę `sklepzdoniczkami_dev_test` z `CREATEDB` bez
+  `CREATEROLE`/superusera. Jej connection string zapisano wyłącznie w sekrecie
+  `DATABASE_URL_DEVELOPMENT_TEST`; nie należy używać go jako URL aplikacji.
+- Django może wskazać unikalną nazwę testowej bazy przez
+  `DJANGO_TEST_DATABASE_NAME`; CI usuwa tę konkretną bazę również po awarii testów.
+- Pełny zestaw testów przeszedł na Neon PostgreSQL: 44 passed, 6 warnings,
+  2 subtests passed. `makemigrations --check --dry-run` zgłosił `No changes detected`.
+- CI backupu wcześniej łączył się ze starym hostem i rolą `neondb_owner`, więc
+  uwierzytelnienie nie działało. Zrotowano hasło `sklepzdoniczkami_prod_ro`,
+  zweryfikowano połączenie z `sklepzdoniczkami_prod` i zapisano osobny sekret
+  `DATABASE_URL_PRODUCTION_BACKUP`. Workflow używa go wraz z już skonfigurowanymi
+  sekretami szyfrującymi.
+- Na branchu `prod` endpoint może być `idle`; Neon automatycznie go uruchamia
+  przy połączeniu. Baza `sklepzdoniczkami_prod` nie miała jeszcze tabel publicznych
+  podczas weryfikacji, więc backup będzie zawierał aktualny stan tej bazy.

@@ -55,7 +55,9 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
 ## GitHub Actions
 
 - `ci.yml` uruchamia kontrole Django, testy i testy przeglądarkowe dla pull
-  requestów oraz zmian na `main`.
+  requestów do `main`/`dev` oraz zmian na tych branchach. Testy Django używają
+  Neon dev i osobnej, tworzonej dla danego uruchomienia bazy testowej; job
+  sprząta ją również po nieudanym teście.
 - `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
   Artefakty są przechowywane przez 90 dni.
 
@@ -65,7 +67,7 @@ Projekt ma trzy odizolowane środowiska:
 
 | Środowisko | Aplikacja | Baza | Dane i płatności |
 |---|---|---|---|
-| Lokalny development | Na komputerze | `sklepzdoniczkami_dev` (lokalny PostgreSQL z Docker Compose lub domyślny SQLite) | Lokalne/testowe |
+| Development | Aplikacja lokalna/CI | Neon `sklepzdoniczkami_dev` | Testowe |
 | Preprod | Render `sklepzdoniczkami-preprod` | Neon `sklepzdoniczkami_preprod` | Katalog syntetyczny, płatności testowe lub wyłączone |
 | Produkcja | Render `sklepzdoniczkami` | Neon `sklepzdoniczkami_prod` | Prawdziwe zamówienia, klucze Stripe live |
 
@@ -110,15 +112,19 @@ nazwy bazy, `DEBUG=False` i jawnego `ALLOWED_HOSTS`.
 
 GitHub Actions potrzebuje sekretów:
 
-- `DATABASE_URL_PRODUCTION`, `BACKUP_ENCRYPTION_KEY_PRODUCTION` i
-  `BACKUP_HMAC_KEY_PRODUCTION` — produkcyjny dostęp do bazy i szyfrowanie
-  backupów; ustaw je jako sekrety środowiska GitHub `production`.
+- `DATABASE_URL_DEVELOPMENT_RO` i `DATABASE_NAME_DEVELOPMENT` do bezpiecznego
+  sprawdzenia dostępu do Neon dev.
+- `DATABASE_URL_DEVELOPMENT_TEST` to dedykowana rola CI z prawem tworzenia
+  bazy testowej; nie używaj jej w aplikacji. CI tworzy osobną nazwę bazy dla
+  każdego uruchomienia i usuwa ją po testach.
+- `DATABASE_URL_PRODUCTION_BACKUP`, `BACKUP_ENCRYPTION_KEY` i
+  `BACKUP_HMAC_KEY` do backupu produkcji. URL backupu używa osobnej roli
+  `sklepzdoniczkami_prod_ro`, a nie poświadczeń aplikacji.
 
-Przed wdrożeniem zaktualizuj nazwy zmiennych w Renderze oraz sekrety GitHub
-zgodnie z tą listą. GitHub nie pozwala odczytać wartości istniejących sekretów,
-więc utwórz nowe wpisy z ich wartościami z zewnętrznego menedżera sekretów.
-Zachowaj stare klucze backupu do czasu wygaśnięcia artefaktów zaszyfrowanych
-tymi kluczami.
+Nie używaj `DATABASE_URL_DEVELOPMENT_TEST` jako połączenia sklepu ani nie
+kopiuj sekretów production do CI testowego. GitHub nie pozwala odczytać
+wartości istniejących sekretów; rotuj je przez Neon/GitHub, a nie przez
+drukowanie ich w logach.
 
 Nie ma automatycznego workflowu przywracającego produkcyjną bazę na preprod.
 Tym samym dane klientów nie są kopiowane do środowiska przedprodukcyjnego.

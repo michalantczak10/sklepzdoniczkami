@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import re
 from pathlib import Path
 
 import dj_database_url
@@ -193,6 +194,14 @@ DATABASES = {
         conn_max_age=600,
     )
 }
+
+TEST_DATABASE_NAME = os.environ.get('DJANGO_TEST_DATABASE_NAME')
+if TEST_DATABASE_NAME:
+    if len(TEST_DATABASE_NAME) > 63 or not re.fullmatch(
+        r'[A-Za-z_][A-Za-z0-9_]*', TEST_DATABASE_NAME
+    ):
+        raise ImproperlyConfigured('DJANGO_TEST_DATABASE_NAME must be a valid PostgreSQL identifier.')
+    DATABASES['default']['TEST'] = {'NAME': TEST_DATABASE_NAME}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
