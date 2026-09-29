@@ -54,7 +54,10 @@ Update 2026-09-29 20:47:26:
   domyślne SELECT dla obiektów tworzonych przez właściciela aplikacji zostały
   przyznane rolom diagnostyczną/read-only.
 - Właścicielem istniejącej schemy i tabel dev jest `sklepzdoniczkami_dev_app`,
-  nie rola owner. Zaktualizowano `DATABASE_URL_DEVELOPMENT` do roli aplikacyjnej.
+  nie rola owner. Zaktualizowano `DATABASE_URL_DEVELOPMENT` do nowej roli
+  `sklepzdoniczkami_dev_web`, która ma tylko DML na schemie public; CREATE TABLE
+  jest odrzucane. Sekret CI i lokalny `.env` nie używają już szerokich uprawnień
+  roli właściciela.
 - Utworzono osobną rolę `sklepzdoniczkami_dev_test` z `CREATEDB` bez
   `CREATEROLE`/superusera. Jej connection string zapisano wyłącznie w sekrecie
   `DATABASE_URL_DEVELOPMENT_TEST`; nie należy używać go jako URL aplikacji.
@@ -63,10 +66,17 @@ Update 2026-09-29 20:47:26:
 - Pełny zestaw testów przeszedł na Neon PostgreSQL: 44 passed, 6 warnings,
   2 subtests passed. `makemigrations --check --dry-run` zgłosił `No changes detected`.
 - CI backupu wcześniej łączył się ze starym hostem i rolą `neondb_owner`, więc
-  uwierzytelnienie nie działało. Zrotowano hasło `sklepzdoniczkami_prod_ro`,
-  zweryfikowano połączenie z `sklepzdoniczkami_prod` i zapisano osobny sekret
-  `DATABASE_URL_PRODUCTION_BACKUP`. Workflow używa go wraz z już skonfigurowanymi
-  sekretami szyfrującymi.
+  uwierzytelnienie nie działało. Utworzono `sklepzdoniczkami_prod_backup` bez
+  CREATEDB/CREATEROLE/REPLICATION/superuser, przyznano mu dostęp przez
+  `pg_read_all_data` i zapisano połączenie w `DATABASE_URL_PRODUCTION_BACKUP`.
+  Połączenie i ograniczone uprawnienia sprawdzono. Ręczny test workflow z
+  branchu PR został zablokowany ochroną GitHub Environment `production`;
+  backup workflow wymaga dozwolonego brancha. Baza Neon `prod` była bez tabel
+  publicznych, więc nie potwierdzono zawartości backupu ani zgodności z
+  aktualnym URL-em działającej usługi.
 - Na branchu `prod` endpoint może być `idle`; Neon automatycznie go uruchamia
   przy połączeniu. Baza `sklepzdoniczkami_prod` nie miała jeszcze tabel publicznych
   podczas weryfikacji, więc backup będzie zawierał aktualny stan tej bazy.
+- CI uruchomione z PR po zmianach przeszło: testy Django na Neon PostgreSQL,
+  kontrola migracji i Playwright E2E (również po przełączeniu sekretu aplikacji
+  na ograniczoną rolę `sklepzdoniczkami_dev_web`).

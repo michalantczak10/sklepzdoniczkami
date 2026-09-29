@@ -119,7 +119,7 @@ GitHub Actions potrzebuje sekretów:
   każdego uruchomienia i usuwa ją po testach.
 - `DATABASE_URL_PRODUCTION_BACKUP`, `BACKUP_ENCRYPTION_KEY` i
   `BACKUP_HMAC_KEY` do backupu produkcji. URL backupu używa osobnej roli
-  `sklepzdoniczkami_prod_ro`, a nie poświadczeń aplikacji.
+  `sklepzdoniczkami_prod_backup`, a nie poświadczeń aplikacji.
 
 Nie używaj `DATABASE_URL_DEVELOPMENT_TEST` jako połączenia sklepu ani nie
 kopiuj sekretów production do CI testowego. GitHub nie pozwala odczytać
