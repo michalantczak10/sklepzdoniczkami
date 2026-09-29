@@ -34,3 +34,9 @@ Update 2026-09-29 20:34:09:
 - Migrate role: no plaintext returned via API; manual action (Console/admin) may be required.
 - Read-only role: no plaintext returned via API; manual action may be required.
 
+
+Update 2026-09-29 20:36:27:
+- SQL-created roles (if allowed) and applied GRANTs where permitted. New roles attempt: 
+  - sklepzdoniczkami_dev_migrate -> role: sklepzdoniczkami_dev_migrate_auto_a09aca27 (grants: True)
+  - sklepzdoniczkami_dev_ro -> role: sklepzdoniczkami_dev_ro_auto_dd19df6a (grants: True)
+
