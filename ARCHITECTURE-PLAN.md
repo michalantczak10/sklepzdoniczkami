@@ -44,13 +44,15 @@ Docelowo zalecam dwa projekty Neon:
   syntetycznymi.
 - `prod`: osobny root branch dla produkcji, z bazą `sklepzdoniczkami_prod`.
 
-Osobny projekt ogranicza skutki błędnego resetu/ujawnienia uprawnień i pozwala
-utrzymać produkcję jako root branch z dostępem do Neon PITR. Aktualnie Neon ma
-jeden projekt: `dev` jest root branchem, a `preprod` i `prod` są jego child
-branchami. Neon nie udostępnia instant restore/PITR dla child branchy, więc
-obecny `prod` nie ma tej ochrony. Jeśli budżet nie pozwoli na osobny projekt,
-nie zakładać PITR dla `prod`; trzeba wtedy polegać na niezależnych backupach
-i regularnie sprawdzanym odtworzeniu. To wariant przejściowy o słabszej izolacji.
+Osobny projekt ogranicza skutki błędnego resetu/ujawnienia uprawnień; jego
+produkcyjny root branch może korzystać z Neon PITR. Sama funkcja PITR wymaga
+root brancha, nie osobnego projektu. Aktualnie Neon ma jeden projekt: `dev`
+jest root branchem, a `preprod` i `prod` są jego child branchami. Neon nie
+udostępnia instant restore/PITR dla child branchy, więc obecny `prod` nie ma
+tej ochrony. Jeśli budżet nie pozwoli na osobny projekt, trzeba przebudować
+topologię tak, by produkcja była root branchem; jeśli to nie jest możliwe,
+nie zakładać PITR i polegać na niezależnych backupach oraz sprawdzanym
+odtworzeniu.
 
 Nie należy tworzyć kolejnej trwałej bazy tylko na potrzeby każdego testu:
 CI ma używać izolowanej, tymczasowej bazy i ją usuwać. Dane produkcyjne nie
@@ -171,10 +173,10 @@ bo wymaga to decyzji budżetowej. Sam płatny workspace nie zmienia planu
 instancji — trzeba zmienić plan usługi.
 
 Filesystem usług Render jest efemeryczny; pliki z `MEDIA_ROOT` mogą zniknąć
-przy redeployu, restarcie albo uśpieniu usługi Free. Przed przyjmowaniem
-uploadów i realnych zamówień przenieść media do object storage (np. S3/R2).
-To zalecana opcja, bo nie jest związana z lifecycle web service i pozwala
-skalować aplikację poziomo.
+przy redeployu, restarcie albo uśpieniu usługi Free. Przed poleganiem na
+obrazach produktów przechowywanych w aplikacyjnym `media/` przenieść je do
+object storage (np. S3/R2). To zalecana opcja, bo nie jest związana z
+lifecycle web service i pozwala skalować aplikację poziomo.
 
 Persistent disk na płatnej instancji może być rozwiązaniem przejściowym, ale
 Render nie pozwala wtedy na zero-downtime deploye ani skalowanie usługi do
@@ -184,17 +186,21 @@ montowania dysku.
 
 Źródła: [ograniczenia Render Free](https://render.com/docs/free) i
 [ograniczenia persistent disks w Render](https://render.com/docs/disks).
+Render wdraża domyślnie po pushu do podpiętego brancha:
+[automatyczne deploye](https://render.com/docs/deploys).
 
 Backup powinien być niezależny od aplikacji, szyfrowany i regularnie
 odtwarzany testowo. Aktualny workflow odrzuca pustą lub błędnie wskazaną bazę,
 co jest bezpieczne, ale nie dowodzi jeszcze, że istnieje użyteczny backup
-aktywnej produkcji. Aktualny `prod` jest child branchem `dev`, więc nie ma
-Neon PITR. Produkcyjny branch powinien być root branchem w osobnym projekcie,
-jeśli chcemy polegać na PITR. Przy przejściowym układzie z produkcją jako child
-branchem nie zakładać PITR — niezależny, testowany backup jest wtedy wymagany.
-W obu przypadkach sprawdzić okno historii konkretnego planu i regularnie
-testować odtworzenie co najmniej kwartalnie. Dodać alerty dla błędów HTTP,
-niedostępności aplikacji, problemów z bazą i nieudanych backupów.
+aktywnej produkcji. Aktualny `prod` jest child branchem `dev`, więc nie ma Neon
+PITR. Produkcyjny branch powinien być root branchem, jeśli chcemy polegać na
+PITR; osobny projekt jest zalecany dla izolacji, ale nie jest wymagany przez
+samą funkcję PITR.
+Przy przejściowym układzie z produkcją jako child branchem nie zakładać PITR —
+niezależny, testowany backup jest wtedy wymagany. Sprawdzić okno historii
+konkretnego planu i regularnie testować odtworzenie co najmniej kwartalnie.
+Dodać alerty dla błędów HTTP, niedostępności aplikacji, problemów z bazą i
+nieudanych backupów.
 
 Źródło: [Neon Instant Restore / PITR](https://neon.com/docs/postgres/backup-restore/branch-restore).
 
@@ -208,26 +214,31 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 ### P0 — bezpieczeństwo danych i uruchomienie środowisk
 
-1. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
+1. W Renderze wyłączyć auto-deploy produkcji do czasu potwierdzenia celu bazy
+   i ścieżki migracji. Usługa jest spięta z `main`, a Render domyślnie deployuje
+   po pushu; `render.yaml` uruchamia `migrate` w `buildCommand`. Do czasu
+   ustawienia gate'u nie scalać ani nie wdrażać zmian, które mogą uruchomić
+   niezweryfikowaną migrację produkcji.
+2. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
    używaną przez usługę produkcyjną i zestawić je z Neon `prod`. Obecny raport
    wskazuje pustą bazę Neon `prod` i niepotwierdzony URL aktywnej usługi.
    Nie wykonywać migracji ani nie przełączać live na pustą bazę.
-2. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
+3. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
    izolowanym branchu. Przed zmianą planu/hostingu zachować również istniejące
    pliki mediów i zweryfikować ich kopię; nie polegać na backupie, który nie
    przeszedł testu odtworzenia.
-3. Przygotować osobny projekt Neon z produkcyjnym root branchem albo jawnie
-   zaakceptować zewnętrzny backup zamiast PITR w wariancie przejściowym.
-   Przenosić dane produkcyjne dopiero po zweryfikowanym backupie i planie
-   cutover; nie przełączać live na pustą bazę.
-4. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
+4. Przygotować produkcyjny root branch albo jawnie zaakceptować zewnętrzny
+   backup zamiast PITR w wariancie przejściowym. Przenosić dane produkcyjne
+   dopiero po zweryfikowanym backupie i planie cutover; nie przełączać live na
+   pustą bazę.
+5. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
    odpowiedni płatny plan lub inny kwalifikujący się hosting. Najpierw jawnie
    wybrać i zatwierdzić koszt planu, a media skopiować i zweryfikować w object
    storage; dopiero potem wdrożyć zmianę konfiguracji i planu usługi. Do tego
    czasu nie synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja
    już obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
    trwałości danych.
-5. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
+6. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
    zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
 
 ### P1 — spójny developer workflow
@@ -261,12 +272,16 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 - `.env.example` pozostawia `DATABASE_URL_DEVELOPMENT` nieustawione i wskazuje
   SQLite, a README opisuje go jako plik z lokalnym URL-em PostgreSQL; należy
   wyjaśnić tę niespójność.
-- Neon ma jeden projekt z `dev` jako root oraz `preprod` i `prod` jako child
-  branche `dev`; poświadczenia CI są ograniczone do środowiska development,
-  a testy PR nie dostają tych sekretów. Child branch `prod` nie obsługuje PITR.
+- Neon API sprawdzone 2026-09-30: jeden projekt z `dev` jako root oraz
+  `preprod` i `prod` jako child branche `dev`; poświadczenia CI są ograniczone
+  do środowiska development, a testy PR nie dostają tych sekretów. Child
+  branch `prod` nie obsługuje PITR.
 - `main` wymaga dwóch checków CI i jednego zatwierdzenia PR; `dev` nie jest
   chroniony. Obie usługi Render w `render.yaml` wskazują `main`, a obie mają
   `plan: free`.
+- Render domyślnie wdraża po pushu na podpięty branch; produkcyjny
+  `buildCommand` uruchamia migracje. Auto-deploy produkcji trzeba zatrzymać
+  do czasu potwierdzenia aktywnej bazy i kontrolowanej ścieżki migracji.
 - Neon `prod` był pusty przy ostatniej weryfikacji, więc workflow backupu
   celowo odmawia utworzenia artefaktu, dopóki poprawny, zmigrowany cel nie
   zostanie potwierdzony. Preprod Render zgłaszał błąd i nie można było sprawdzić
