@@ -124,6 +124,11 @@ Obecny projekt ma jeden workflow CI z testami Django i Playwright; są to
 oddzielne joby jednego pipeline'u, nie dwa konkurencyjne CI. Backup jest osobnym
 workflowem operacyjnym i powinien nim pozostać.
 
+Obecnie testy PR wybierają `config.settings_test`, czyli in-memory SQLite.
+Kod zamówień i stanów magazynowych korzysta z `select_for_update()` w
+transakcjach; zielone testy SQLite nie weryfikują semantyki blokad PostgreSQL.
+To uzasadnia usługową bazę PostgreSQL w CI PR, bez sekretów Neon.
+
 Docelowo:
 
 - PR: lint/check Django, testy i E2E na efemerycznym PostgreSQL w GitHub Actions;
@@ -221,7 +226,10 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 2. Ochronić `dev` i `main` wymaganymi statusami i zasadami PR opisanymi wyżej.
 3. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
    GitHub Actions zamiast polegać wyłącznie na SQLite.
-4. Uzgodnić jedną kontrolowaną ścieżkę migracji.
+4. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
+   `DATABASE_URL_DEVELOPMENT`, więc hostowe Django używa SQLite, mimo że
+   instrukcja sugeruje lokalny PostgreSQL z Docker Compose.
+5. Uzgodnić jedną kontrolowaną ścieżkę migracji.
 
 ### P2 — izolacja produkcji i odporność
 
@@ -238,6 +246,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   uzasadnienia dla MongoDB ani mikroserwisów.
 - Repo ma Compose dla lokalnego PostgreSQL oraz ustawienia SQLite używane m.in.
   w testach PR.
+- `.env.example` pozostawia `DATABASE_URL_DEVELOPMENT` nieustawione i wskazuje
+  SQLite, a README opisuje go jako plik z lokalnym URL-em PostgreSQL; należy
+  wyjaśnić tę niespójność.
 - Neon ma środowiska/branche `dev`, `preprod`, `prod`; poświadczenia CI są
   ograniczone do środowiska development, a testy PR nie dostają tych sekretów.
 - `main` wymaga dwóch checków CI i jednego zatwierdzenia PR; `dev` nie jest
