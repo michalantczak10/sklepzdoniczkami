@@ -95,11 +95,15 @@ między historią integracji i wydania.
 ## PR-y, review i automatyczne scalanie
 
 - Każda zmiana kodu idzie przez PR z krótkim opisem celu, ryzyka i testów.
-- Dla zwykłych zmian: dwa niezależne review subagentów (np. poprawność oraz
-  bezpieczeństwo/operacje). Dla zmian auth, płatności, danych, migracji,
-  sekretów, CI/CD lub infrastruktury: trzy.
+- Dla każdego PR-a uruchamiać trzy niezależne review subagentów: poprawność
+  zmian, testy/regresje oraz bezpieczeństwo/operacje. Dla zmian wysokiego
+  ryzyka rozszerzyć zakres każdej oceny, zamiast pomijać którąś z perspektyw
+  przy małych PR-ach.
 - W review sprawdzany jest dokładny commit PR-a. Znaleziska muszą być
   rozstrzygnięte; samo „approve” bez sprawdzenia diffu nie wystarcza.
+- Scalać PR dopiero po trzech pozytywnych review tego samego commita,
+  rozstrzygnięciu wszystkich znalezisk, zielonych wymaganych checkach CI i
+  spełnieniu ewentualnego wymagania zatwierdzenia GitHub.
 - Agenci są doradcami, nie niezależnymi właścicielami systemu ani
   wiarygodnym statusem GitHub. Mogą przeoczyć błąd albo zgłosić fałszywy alarm.
   Ostateczna decyzja pozostaje po stronie właściciela projektu.
@@ -114,12 +118,13 @@ między historią integracji i wydania.
 ### Ustawienia GitHub do doprowadzenia do celu
 
 - `main` ma już wymagane checki `Django tests` i
-  `End-to-end tests (Playwright)` oraz jednego zatwierdzenia PR.
+  `End-to-end tests (Playwright)`, ale obecnie nie wymaga zatwierdzenia PR.
+  Włączyć co najmniej jedno zatwierdzenie niezależnego reviewera, jeśli jest
+  dostępny; review subagentów nie zastępuje wymogu GitHub.
 - `dev` nie jest obecnie chroniony. Dodać do niego te same wymagane checki,
   zakaz bezpośredniego push/force-push i wymaganie PR.
-- Zachować wymagane zatwierdzenie na `main`, jeśli dostępny jest niezależny
-  człowiek-reviewer. Przy pracy solo, jeśli nie da się go uzyskać, jawnie
-  zdecydować o zmianie liczby wymaganych approvals albo utrzymać zaufanego
+- Przy pracy solo, jeśli niezależny człowiek-reviewer nie jest dostępny, jawnie
+  zdecydować o liczbie wymaganych approvals albo utrzymać zaufanego
   zewnętrznego reviewera; nie obchodzić reguły po cichu. Subagenci nie spełniają
   wymagania GitHub approval i nie zastępują zatwierdzenia innej osoby.
 - Zachować ograniczenia środowisk GitHub: sekrety deweloperskie dostępne
@@ -253,16 +258,18 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 1. Skierować Render preprod na `dev`, a wdrożenie produkcji zrobić ręcznym
    gate'em z `main`.
-2. Ochronić `dev` i `main` wymaganymi statusami i zasadami PR opisanymi wyżej.
-3. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
+2. Ograniczyć publikację portu PostgreSQL z Docker Compose do `127.0.0.1`
+   (np. `127.0.0.1:5434:5432`), nie wszystkich interfejsów hosta.
+3. Ochronić `dev` i `main` wymaganymi statusami i zasadami PR opisanymi wyżej.
+4. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
    GitHub Actions zamiast polegać wyłącznie na SQLite.
-4. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
+5. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
    `DATABASE_URL_DEVELOPMENT`, więc hostowe Django używa SQLite, mimo że
    instrukcja sugeruje lokalny PostgreSQL z Docker Compose. README twierdzi też,
    że testy Django w CI używają Neon dev i osobnej bazy testowej, chociaż joby
    pull requestów używają SQLite; opisać osobno zachowanie PR i pushów albo
    zmienić konfigurację workflow.
-5. Uzgodnić jedną kontrolowaną ścieżkę migracji.
+6. Uzgodnić jedną kontrolowaną ścieżkę migracji.
 
 ### P2 — izolacja produkcji i odporność
 
@@ -288,7 +295,8 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   `preprod` i `prod` jako child branche `dev`; poświadczenia CI są ograniczone
   do środowiska development, a testy PR nie dostają tych sekretów. Child
   branch `prod` nie obsługuje PITR.
-- `main` wymaga dwóch checków CI i jednego zatwierdzenia PR; `dev` nie jest
+- `main` wymaga dwóch checków CI i egzekwuje ochronę również wobec
+  administratorów, ale obecnie nie wymaga zatwierdzenia PR; `dev` nie jest
   chroniony. Push na `dev` uruchamia workflow CI w środowisku `development`,
   które udostępnia sekrety bazodanowe. Obie usługi Render w `render.yaml`
   wskazują `main`, a obie mają `plan: free`.
