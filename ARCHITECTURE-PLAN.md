@@ -106,13 +106,14 @@ między historią integracji i wydania.
 ### Ustawienia GitHub do doprowadzenia do celu
 
 - `main` ma już wymagane checki `Django tests` i
-  `End-to-end tests (Playwright)`, ale nie wymaga zatwierdzenia PR.
+  `End-to-end tests (Playwright)` oraz jednego zatwierdzenia PR.
 - `dev` nie jest obecnie chroniony. Dodać do niego te same wymagane checki,
   zakaz bezpośredniego push/force-push i wymaganie PR.
-- Jeśli pojawi się drugi człowiek z prawem review, wymagać co najmniej jednego
-  zatwierdzenia innego niż autor. Przy pracy solo nie konfigurować reguły,
-  której autor nie może spełnić; utrzymać samodzielne, świadome zatwierdzenie
-  po wynikach agentów.
+- Zachować wymagane zatwierdzenie na `main`, jeśli dostępny jest niezależny
+  człowiek-reviewer. Przy pracy solo, jeśli nie da się go uzyskać, jawnie
+  zdecydować o zmianie liczby wymaganych approvals albo utrzymać zaufanego
+  zewnętrznego reviewera; nie obchodzić reguły po cichu. Subagenci nie spełniają
+  wymagania GitHub approval i nie zastępują zatwierdzenia innej osoby.
 - Zachować ograniczenia środowisk GitHub: sekrety deweloperskie dostępne
   tylko na `main`/`dev`; workflow PR nie otrzymuje ich. Sekret produkcyjny
   dostępny wyłącznie w chronionym środowisku produkcyjnym.
@@ -151,8 +152,12 @@ akceptowalny dla sklepu przyjmującego prawdziwe zamówienia. Render wprost
 odradza plan Free do produkcji; usypia usługę po bezczynności, a jej wznowienie
 może trwać około minuty. Przed uruchomieniem lub dalszą obsługą realnych
 zamówień należy przenieść usługę produkcyjną na płatny plan Render albo
-wybrać inny hosting o wymaganej dostępności. Sam płatny workspace nie zmienia
-planu instancji — trzeba zmienić plan usługi.
+wybrać inny hosting o wymaganej dostępności. Obecny `render.yaml` nadal
+deklaruje `plan: free` dla produkcji; przed synchronizacją Blueprintu dla live
+trzeba jawnie zmienić plan usługi na wybrany płatny wariant. Nie ustawiam
+konkretnego płatnego planu w tym dokumencie ani nie zmieniam go automatycznie,
+bo wymaga to decyzji budżetowej. Sam płatny workspace nie zmienia planu
+instancji — trzeba zmienić plan usługi.
 
 Filesystem usług Render jest efemeryczny; pliki z `MEDIA_ROOT` mogą zniknąć
 przy redeployu, restarcie albo uśpieniu usługi Free. Przed przyjmowaniem
@@ -199,8 +204,10 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    Nie wykonywać migracji ani nie przełączać live na pustą bazę.
 2. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
    odpowiedni płatny plan lub inny kwalifikujący się hosting oraz przenieść
-   media poza efemeryczny filesystem. Jeśli produkcja już obsługuje klientów,
-   potraktować to jako pilną poprawkę dostępności i trwałości danych.
+   media poza efemeryczny filesystem. Najpierw jawnie wybrać i zatwierdzić
+   koszt planu, następnie zmienić `render.yaml`/usługę; do tego czasu nie
+   synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja już obsługuje
+   klientów, potraktować to jako pilną poprawkę dostępności i trwałości danych.
 3. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
    zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
 4. Dopiero po potwierdzeniu bazy produkcyjnej wykonać backup i próbę
@@ -233,8 +240,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   w testach PR.
 - Neon ma środowiska/branche `dev`, `preprod`, `prod`; poświadczenia CI są
   ograniczone do środowiska development, a testy PR nie dostają tych sekretów.
-- `main` wymaga dwóch checków CI, ale `dev` nie jest chroniony i `main` nie
-  wymaga review PR. Obie usługi Render w `render.yaml` wskazują `main`.
+- `main` wymaga dwóch checków CI i jednego zatwierdzenia PR; `dev` nie jest
+  chroniony. Obie usługi Render w `render.yaml` wskazują `main`, a obie mają
+  `plan: free`.
 - Neon `prod` był pusty przy ostatniej weryfikacji, więc workflow backupu
   celowo odmawia utworzenia artefaktu, dopóki poprawny, zmigrowany cel nie
   zostanie potwierdzony. Preprod Render zgłaszał błąd i nie można było sprawdzić
