@@ -156,20 +156,32 @@ planu instancji — trzeba zmienić plan usługi.
 
 Filesystem usług Render jest efemeryczny; pliki z `MEDIA_ROOT` mogą zniknąć
 przy redeployu, restarcie albo uśpieniu usługi Free. Przed przyjmowaniem
-uploadów i realnych zamówień przenieść media do object storage (np. S3/R2)
-albo świadomie utrzymywanego persistent disk na płatnej instancji i ustawić
-`MEDIA_ROOT` pod jego ścieżką montowania. Domyślnie preferuję object storage,
-bo jest niezależny od lifecycle web service.
+uploadów i realnych zamówień przenieść media do object storage (np. S3/R2).
+To zalecana opcja, bo nie jest związana z lifecycle web service i pozwala
+skalować aplikację poziomo.
+
+Persistent disk na płatnej instancji może być rozwiązaniem przejściowym, ale
+Render nie pozwala wtedy na zero-downtime deploye ani skalowanie usługi do
+wielu instancji. Wybrać go tylko wtedy, gdy akceptujemy krótką niedostępność
+przy wdrożeniu i pojedynczą instancję; `MEDIA_ROOT` musi wskazywać ścieżkę
+montowania dysku.
 
 Źródła: [ograniczenia Render Free](https://render.com/docs/free) i
-[persistent disks w Render](https://render.com/docs/disks).
+[ograniczenia persistent disks w Render](https://render.com/docs/disks).
 
 Backup powinien być niezależny od aplikacji, szyfrowany i regularnie
 odtwarzany testowo. Aktualny workflow odrzuca pustą lub błędnie wskazaną bazę,
 co jest bezpieczne, ale nie dowodzi jeszcze, że istnieje użyteczny backup
-aktywnej produkcji. Zachować PITR Neon, zewnętrzną kopię oraz test odtworzenia
-co najmniej kwartalnie. Dodać alerty dla błędów HTTP, niedostępności aplikacji,
-problemów z bazą i nieudanych backupów.
+aktywnej produkcji. Neon PITR dotyczy wyłącznie root branchy; child branch nie
+ma instant restore. Dlatego produkcyjny branch powinien być root branchem
+w osobnym projekcie Neon, jeśli chcemy polegać na PITR. Przy przejściowym
+układzie z produkcją jako child branchem nie zakładać dostępności PITR —
+zewnętrzny, testowany backup jest wtedy wymagany. W obu przypadkach sprawdzić
+okno historii konkretnego planu i regularnie testować odtworzenie co najmniej
+kwartalnie. Dodać alerty dla błędów HTTP, niedostępności aplikacji, problemów
+z bazą i nieudanych backupów.
+
+Źródło: [Neon Instant Restore / PITR](https://neon.com/docs/postgres/backup-restore/branch-restore).
 
 Wszystkie usługi i baza powinny być w tym samym regionie, najlepiej blisko
 klientów i z uwzględnieniem wymogów danych UE. Przed zakupem sprawdzić
