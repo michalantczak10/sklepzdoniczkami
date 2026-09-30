@@ -219,26 +219,34 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    po pushu; `render.yaml` uruchamia `migrate` w `buildCommand`. Do czasu
    ustawienia gate'u nie scalać ani nie wdrażać zmian, które mogą uruchomić
    niezweryfikowaną migrację produkcji.
-2. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
+2. Zabezpieczyć `dev` przed bezpośrednim pushem, zanim pushowe joby CI będą
+   mogły używać sekretów development. Obecnie branch nie jest chroniony,
+   a push uruchamia workflow w środowisku `development`; do czasu wdrożenia
+   ochrony usunąć sekrety z tych jobów albo wyłączyć sekrety przy pushach na
+   `dev`.
+3. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
    używaną przez usługę produkcyjną i zestawić je z Neon `prod`. Obecny raport
    wskazuje pustą bazę Neon `prod` i niepotwierdzony URL aktywnej usługi.
    Nie wykonywać migracji ani nie przełączać live na pustą bazę.
-3. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
-   izolowanym branchu. Przed zmianą planu/hostingu zachować również istniejące
-   pliki mediów i zweryfikować ich kopię; nie polegać na backupie, który nie
-   przeszedł testu odtworzenia.
-4. Przygotować produkcyjny root branch albo jawnie zaakceptować zewnętrzny
-   backup zamiast PITR w wariancie przejściowym. Przenosić dane produkcyjne
-   dopiero po zweryfikowanym backupie i planie cutover; nie przełączać live na
-   pustą bazę.
-5. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
+4. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
+   izolowanym branchu. Zweryfikować nie tylko schemat i integralność backupu,
+   ale też obecność i zgodność oczekiwanych danych biznesowych; obecny workflow
+   sprawdza endpoint i istnienie tabel, nie ich zawartość. Przed zmianą
+   planu/hostingu zachować również istniejące pliki mediów i zweryfikować ich
+   kopię; nie polegać na backupie, który nie przeszedł testu odtworzenia.
+5. Przygotować produkcyjny root branch albo jawnie zaakceptować zewnętrzny
+   backup zamiast PITR w wariancie przejściowym. Przed cutover zatrzymać zapisy
+   albo wykonać końcową synchronizację zmian, zweryfikować dane docelowe i
+   dopiero potem przełączyć ruch produkcyjny. Nie przełączać live na pustą bazę
+   ani na kopię, która nie zawiera wszystkich zapisów przyjętych przed cutover.
+6. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
    odpowiedni płatny plan lub inny kwalifikujący się hosting. Najpierw jawnie
    wybrać i zatwierdzić koszt planu, a media skopiować i zweryfikować w object
    storage; dopiero potem wdrożyć zmianę konfiguracji i planu usługi. Do tego
    czasu nie synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja
    już obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
    trwałości danych.
-6. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
+7. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
    zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
 
 ### P1 — spójny developer workflow
@@ -281,15 +289,16 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   do środowiska development, a testy PR nie dostają tych sekretów. Child
   branch `prod` nie obsługuje PITR.
 - `main` wymaga dwóch checków CI i jednego zatwierdzenia PR; `dev` nie jest
-  chroniony. Obie usługi Render w `render.yaml` wskazują `main`, a obie mają
-  `plan: free`.
+  chroniony. Push na `dev` uruchamia workflow CI w środowisku `development`,
+  które udostępnia sekrety bazodanowe. Obie usługi Render w `render.yaml`
+  wskazują `main`, a obie mają `plan: free`.
 - Render domyślnie wdraża po pushu na podpięty branch; produkcyjny
   `buildCommand` uruchamia migracje. Auto-deploy produkcji trzeba zatrzymać
   do czasu potwierdzenia aktywnej bazy i kontrolowanej ścieżki migracji.
-- Neon `prod` był pusty przy ostatniej weryfikacji, więc workflow backupu
-  celowo odmawia utworzenia artefaktu, dopóki poprawny, zmigrowany cel nie
-  zostanie potwierdzony. Preprod Render zgłaszał błąd i nie można było sprawdzić
-  logów bez dostępu do Render Dashboard/API.
+- Neon `prod` był pusty przy ostatniej weryfikacji. Workflow backupu sprawdza
+  oczekiwany endpoint i istnienie tabel, ale nie potwierdza obecności danych
+  biznesowych. Preprod Render zgłaszał błąd i nie można było sprawdzić logów
+  bez dostępu do Render Dashboard/API.
 - Klucze szyfrujące pozostają repozytoryjnymi sekretami do czasu migracji
   historycznych backupów; nie rotować ich bez planu zachowania odczytu starych
   artefaktów.
