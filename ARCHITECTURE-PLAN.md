@@ -146,13 +146,23 @@ problemu preprod i potwierdzony produkcyjny URL. `render.yaml` wskazuje obecnie
 branch `main` zarówno dla produkcji, jak i preprod; należy zmienić preprod na
 `dev`, a produkcji nie wdrażać automatycznie przy każdym pushu do `main`.
 
-Obecny plan Render `free` i lokalny `MEDIA_ROOT` wymagają oceny przed obsługą
-prawdziwych klientów. Dla sklepu z zamówieniami produkcja powinna mieć
-odpowiedni poziom dostępności, region aplikacji bliski regionowi bazy i
-trwałe przechowywanie uploadów. Pliki w `MEDIA_ROOT` mogą zniknąć przy
-redeployu; docelowo przenieść je do object storage (np. S3/R2) albo świadomie
-utrzymywanego persistent disk. Nie przechowywać uploadów użytkowników wyłącznie
-w efemerycznym filesystemie hostingu.
+**Warunek wejścia w realną produkcję:** obecny Render `free` nie jest
+akceptowalny dla sklepu przyjmującego prawdziwe zamówienia. Render wprost
+odradza plan Free do produkcji; usypia usługę po bezczynności, a jej wznowienie
+może trwać około minuty. Przed uruchomieniem lub dalszą obsługą realnych
+zamówień należy przenieść usługę produkcyjną na płatny plan Render albo
+wybrać inny hosting o wymaganej dostępności. Sam płatny workspace nie zmienia
+planu instancji — trzeba zmienić plan usługi.
+
+Filesystem usług Render jest efemeryczny; pliki z `MEDIA_ROOT` mogą zniknąć
+przy redeployu, restarcie albo uśpieniu usługi Free. Przed przyjmowaniem
+uploadów i realnych zamówień przenieść media do object storage (np. S3/R2)
+albo świadomie utrzymywanego persistent disk na płatnej instancji i ustawić
+`MEDIA_ROOT` pod jego ścieżką montowania. Domyślnie preferuję object storage,
+bo jest niezależny od lifecycle web service.
+
+Źródła: [ograniczenia Render Free](https://render.com/docs/free) i
+[persistent disks w Render](https://render.com/docs/disks).
 
 Backup powinien być niezależny od aplikacji, szyfrowany i regularnie
 odtwarzany testowo. Aktualny workflow odrzuca pustą lub błędnie wskazaną bazę,
@@ -175,9 +185,13 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    używaną przez usługę produkcyjną i zestawić je z Neon `prod`. Obecny raport
    wskazuje pustą bazę Neon `prod` i niepotwierdzony URL aktywnej usługi.
    Nie wykonywać migracji ani nie przełączać live na pustą bazę.
-2. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
+2. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
+   odpowiedni płatny plan lub inny kwalifikujący się hosting oraz przenieść
+   media poza efemeryczny filesystem. Jeśli produkcja już obsługuje klientów,
+   potraktować to jako pilną poprawkę dostępności i trwałości danych.
+3. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
    zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
-3. Dopiero po potwierdzeniu bazy produkcyjnej wykonać backup i próbę
+4. Dopiero po potwierdzeniu bazy produkcyjnej wykonać backup i próbę
    odtworzenia na izolowanym branchu. Backup, który nie przeszedł weryfikacji,
    nie jest planem odzyskiwania.
 
@@ -188,7 +202,7 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 2. Ochronić `dev` i `main` wymaganymi statusami i zasadami PR opisanymi wyżej.
 3. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
    GitHub Actions zamiast polegać wyłącznie na SQLite.
-4. Uzgodnić jedną ścieżkę migracji i trwałe miejsce dla mediów.
+4. Uzgodnić jedną kontrolowaną ścieżkę migracji.
 
 ### P2 — izolacja produkcji i odporność
 
