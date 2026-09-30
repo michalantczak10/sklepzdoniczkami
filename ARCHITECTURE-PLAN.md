@@ -38,13 +38,19 @@ pojedynczego dostawcy.
 - **Testy CI:** tymczasowa baza PostgreSQL na run, z unikalną nazwą i
   sprzątaniem po teście; nigdy produkcja.
 
-W dłuższym terminie zalecam dwa projekty Neon: jeden non-production dla
-`dev`/`preprod` i drugi dla `prod`. Oddzielny projekt produkcyjny lepiej
-ogranicza skutki błędnego resetu brancha, ujawnienia uprawnień i pomyłki
-administracyjnej. Jeśli plan Neon albo budżet tego nie umożliwia, przejściowo
-można pozostać przy jednym projekcie, ale produkcja musi mieć osobny branch,
-oddzielne role i sekrety oraz zakaz tworzenia branchy preprod z danych
-produkcyjnych.
+Docelowo zalecam dwa projekty Neon:
+
+- `nonprod`: root branch `dev` oraz `preprod` jako child branch, z danymi
+  syntetycznymi.
+- `prod`: osobny root branch dla produkcji, z bazą `sklepzdoniczkami_prod`.
+
+Osobny projekt ogranicza skutki błędnego resetu/ujawnienia uprawnień i pozwala
+utrzymać produkcję jako root branch z dostępem do Neon PITR. Aktualnie Neon ma
+jeden projekt: `dev` jest root branchem, a `preprod` i `prod` są jego child
+branchami. Neon nie udostępnia instant restore/PITR dla child branchy, więc
+obecny `prod` nie ma tej ochrony. Jeśli budżet nie pozwoli na osobny projekt,
+nie zakładać PITR dla `prod`; trzeba wtedy polegać na niezależnych backupach
+i regularnie sprawdzanym odtworzeniu. To wariant przejściowy o słabszej izolacji.
 
 Nie należy tworzyć kolejnej trwałej bazy tylko na potrzeby każdego testu:
 CI ma używać izolowanej, tymczasowej bazy i ją usuwać. Dane produkcyjne nie
@@ -182,14 +188,13 @@ montowania dysku.
 Backup powinien być niezależny od aplikacji, szyfrowany i regularnie
 odtwarzany testowo. Aktualny workflow odrzuca pustą lub błędnie wskazaną bazę,
 co jest bezpieczne, ale nie dowodzi jeszcze, że istnieje użyteczny backup
-aktywnej produkcji. Neon PITR dotyczy wyłącznie root branchy; child branch nie
-ma instant restore. Dlatego produkcyjny branch powinien być root branchem
-w osobnym projekcie Neon, jeśli chcemy polegać na PITR. Przy przejściowym
-układzie z produkcją jako child branchem nie zakładać dostępności PITR —
-zewnętrzny, testowany backup jest wtedy wymagany. W obu przypadkach sprawdzić
-okno historii konkretnego planu i regularnie testować odtworzenie co najmniej
-kwartalnie. Dodać alerty dla błędów HTTP, niedostępności aplikacji, problemów
-z bazą i nieudanych backupów.
+aktywnej produkcji. Aktualny `prod` jest child branchem `dev`, więc nie ma
+Neon PITR. Produkcyjny branch powinien być root branchem w osobnym projekcie,
+jeśli chcemy polegać na PITR. Przy przejściowym układzie z produkcją jako child
+branchem nie zakładać PITR — niezależny, testowany backup jest wtedy wymagany.
+W obu przypadkach sprawdzić okno historii konkretnego planu i regularnie
+testować odtworzenie co najmniej kwartalnie. Dodać alerty dla błędów HTTP,
+niedostępności aplikacji, problemów z bazą i nieudanych backupów.
 
 Źródło: [Neon Instant Restore / PITR](https://neon.com/docs/postgres/backup-restore/branch-restore).
 
@@ -207,17 +212,23 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    używaną przez usługę produkcyjną i zestawić je z Neon `prod`. Obecny raport
    wskazuje pustą bazę Neon `prod` i niepotwierdzony URL aktywnej usługi.
    Nie wykonywać migracji ani nie przełączać live na pustą bazę.
-2. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
-   odpowiedni płatny plan lub inny kwalifikujący się hosting oraz przenieść
-   media poza efemeryczny filesystem. Najpierw jawnie wybrać i zatwierdzić
-   koszt planu, następnie zmienić `render.yaml`/usługę; do tego czasu nie
-   synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja już obsługuje
-   klientów, potraktować to jako pilną poprawkę dostępności i trwałości danych.
-3. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
+2. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
+   izolowanym branchu. Przed zmianą planu/hostingu zachować również istniejące
+   pliki mediów i zweryfikować ich kopię; nie polegać na backupie, który nie
+   przeszedł testu odtworzenia.
+3. Przygotować osobny projekt Neon z produkcyjnym root branchem albo jawnie
+   zaakceptować zewnętrzny backup zamiast PITR w wariancie przejściowym.
+   Przenosić dane produkcyjne dopiero po zweryfikowanym backupie i planie
+   cutover; nie przełączać live na pustą bazę.
+4. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
+   odpowiedni płatny plan lub inny kwalifikujący się hosting. Najpierw jawnie
+   wybrać i zatwierdzić koszt planu, a media skopiować i zweryfikować w object
+   storage; dopiero potem wdrożyć zmianę konfiguracji i planu usługi. Do tego
+   czasu nie synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja
+   już obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
+   trwałości danych.
+5. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
    zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
-4. Dopiero po potwierdzeniu bazy produkcyjnej wykonać backup i próbę
-   odtworzenia na izolowanym branchu. Backup, który nie przeszedł weryfikacji,
-   nie jest planem odzyskiwania.
 
 ### P1 — spójny developer workflow
 
@@ -233,8 +244,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 ### P2 — izolacja produkcji i odporność
 
-1. Po kopii i sprawdzonym odtworzeniu rozważyć osobny projekt Neon dla prod.
-2. Ustalić retencję backupów, monitoring, alerty i właściciela reakcji na
+1. Dopasować historię Neon i retencję zewnętrznych backupów do uzgodnionych
+   celów RPO/RTO oraz budżetu.
+2. Ustalić monitoring, alerty i właściciela reakcji na
    incydent.
 3. Automatyzować merge tylko dla bezpiecznych, niskiego ryzyka zmian po
    zbudowaniu wiarygodnych statusów review; zachować ręczne zatwierdzenie
@@ -249,8 +261,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 - `.env.example` pozostawia `DATABASE_URL_DEVELOPMENT` nieustawione i wskazuje
   SQLite, a README opisuje go jako plik z lokalnym URL-em PostgreSQL; należy
   wyjaśnić tę niespójność.
-- Neon ma środowiska/branche `dev`, `preprod`, `prod`; poświadczenia CI są
-  ograniczone do środowiska development, a testy PR nie dostają tych sekretów.
+- Neon ma jeden projekt z `dev` jako root oraz `preprod` i `prod` jako child
+  branche `dev`; poświadczenia CI są ograniczone do środowiska development,
+  a testy PR nie dostają tych sekretów. Child branch `prod` nie obsługuje PITR.
 - `main` wymaga dwóch checków CI i jednego zatwierdzenia PR; `dev` nie jest
   chroniony. Obie usługi Render w `render.yaml` wskazują `main`, a obie mają
   `plan: free`.
