@@ -118,11 +118,13 @@ między historią integracji i wydania.
 ### Ustawienia GitHub do doprowadzenia do celu
 
 - `main` ma już wymagane checki `Django tests` i
-  `End-to-end tests (Playwright)`, ale obecnie nie wymaga zatwierdzenia PR.
-  Włączyć co najmniej jedno zatwierdzenie niezależnego reviewera, jeśli jest
-  dostępny; review subagentów nie zastępuje wymogu GitHub.
-- `dev` nie jest obecnie chroniony. Dodać do niego te same wymagane checki,
-  zakaz bezpośredniego push/force-push i wymaganie PR.
+  `End-to-end tests (Playwright)`, ale obecnie nie wymaga PR ani zatwierdzenia.
+  Wymusić PR, zakaz bezpośredniego push/force-push i co najmniej jedno
+  zatwierdzenie niezależnego reviewera, jeśli jest dostępny; review subagentów
+  nie zastępuje wymogu GitHub.
+- `dev` nie jest obecnie chroniony. Wymusić PR, zakaz bezpośredniego
+  push/force-push i te same wymagane checki; do czasu skutecznej ochrony nie
+  udostępniać pushowym jobom sekretów development.
 - Przy pracy solo, jeśli niezależny człowiek-reviewer nie jest dostępny, jawnie
   zdecydować o liczbie wymaganych approvals albo utrzymać zaufanego
   zewnętrznego reviewera; nie obchodzić reguły po cichu. Subagenci nie spełniają
@@ -229,29 +231,34 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    a push uruchamia workflow w środowisku `development`; do czasu wdrożenia
    ochrony usunąć sekrety z tych jobów albo wyłączyć sekrety przy pushach na
    `dev`.
-3. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
+3. Wymusić dla `main` aktualizacje wyłącznie przez PR, bez bezpośrednich
+   pushy/force-pushy i bez cichego obejścia reguł. Wymagać zielonych checków
+   CI oraz co najmniej jednego niezależnego zatwierdzenia, jeśli dostępny jest
+   reviewer. Do czasu potwierdzenia bazy nie scalać zmian, które mogą uruchomić
+   niezweryfikowaną migrację.
+4. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
    używaną przez usługę produkcyjną i zestawić je z Neon `prod`. Obecny raport
    wskazuje pustą bazę Neon `prod` i niepotwierdzony URL aktywnej usługi.
    Nie wykonywać migracji ani nie przełączać live na pustą bazę.
-4. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
+5. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
    izolowanym branchu. Zweryfikować nie tylko schemat i integralność backupu,
    ale też obecność i zgodność oczekiwanych danych biznesowych; obecny workflow
    sprawdza endpoint i istnienie tabel, nie ich zawartość. Przed zmianą
    planu/hostingu zachować również istniejące pliki mediów i zweryfikować ich
    kopię; nie polegać na backupie, który nie przeszedł testu odtworzenia.
-5. Przygotować produkcyjny root branch albo jawnie zaakceptować zewnętrzny
+6. Przygotować produkcyjny root branch albo jawnie zaakceptować zewnętrzny
    backup zamiast PITR w wariancie przejściowym. Przed cutover zatrzymać zapisy
    albo wykonać końcową synchronizację zmian, zweryfikować dane docelowe i
    dopiero potem przełączyć ruch produkcyjny. Nie przełączać live na pustą bazę
    ani na kopię, która nie zawiera wszystkich zapisów przyjętych przed cutover.
-6. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
+7. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
    odpowiedni płatny plan lub inny kwalifikujący się hosting. Najpierw jawnie
    wybrać i zatwierdzić koszt planu, a media skopiować i zweryfikować w object
    storage; dopiero potem wdrożyć zmianę konfiguracji i planu usługi. Do tego
    czasu nie synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja
    już obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
    trwałości danych.
-7. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
+8. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
    zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
 
 ### P1 — spójny developer workflow
@@ -260,16 +267,15 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    gate'em z `main`.
 2. Ograniczyć publikację portu PostgreSQL z Docker Compose do `127.0.0.1`
    (np. `127.0.0.1:5434:5432`), nie wszystkich interfejsów hosta.
-3. Ochronić `dev` i `main` wymaganymi statusami i zasadami PR opisanymi wyżej.
-4. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
+3. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
    GitHub Actions zamiast polegać wyłącznie na SQLite.
-5. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
+4. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
    `DATABASE_URL_DEVELOPMENT`, więc hostowe Django używa SQLite, mimo że
    instrukcja sugeruje lokalny PostgreSQL z Docker Compose. README twierdzi też,
    że testy Django w CI używają Neon dev i osobnej bazy testowej, chociaż joby
    pull requestów używają SQLite; opisać osobno zachowanie PR i pushów albo
    zmienić konfigurację workflow.
-6. Uzgodnić jedną kontrolowaną ścieżkę migracji.
+5. Uzgodnić jedną kontrolowaną ścieżkę migracji.
 
 ### P2 — izolacja produkcji i odporność
 
