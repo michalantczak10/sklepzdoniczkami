@@ -250,7 +250,10 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    GitHub Actions zamiast polegać wyłącznie na SQLite.
 4. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
    `DATABASE_URL_DEVELOPMENT`, więc hostowe Django używa SQLite, mimo że
-   instrukcja sugeruje lokalny PostgreSQL z Docker Compose.
+   instrukcja sugeruje lokalny PostgreSQL z Docker Compose. README twierdzi też,
+   że testy Django w CI używają Neon dev i osobnej bazy testowej, chociaż joby
+   pull requestów używają SQLite; opisać osobno zachowanie PR i pushów albo
+   zmienić konfigurację workflow.
 5. Uzgodnić jedną kontrolowaną ścieżkę migracji.
 
 ### P2 — izolacja produkcji i odporność
@@ -271,7 +274,8 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   w testach PR.
 - `.env.example` pozostawia `DATABASE_URL_DEVELOPMENT` nieustawione i wskazuje
   SQLite, a README opisuje go jako plik z lokalnym URL-em PostgreSQL; należy
-  wyjaśnić tę niespójność.
+  wyjaśnić tę niespójność. README opisuje również testy CI jako korzystające
+  z Neon dev, mimo że testy PR działają na in-memory SQLite.
 - Neon API sprawdzone 2026-09-30: jeden projekt z `dev` jako root oraz
   `preprod` i `prod` jako child branche `dev`; poświadczenia CI są ograniczone
   do środowiska development, a testy PR nie dostają tych sekretów. Child
