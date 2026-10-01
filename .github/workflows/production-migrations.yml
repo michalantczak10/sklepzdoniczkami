@@ -12,8 +12,16 @@ on:
           - existing-production
           - verified-empty-bootstrap
         default: not-confirmed
+      legacy_data_disposition:
+        description: For empty bootstrap, confirm legacy SQLite data is intentionally discarded
+        required: true
+        type: choice
+        options:
+          - not-confirmed
+          - intentionally-discarded
+        default: not-confirmed
       backup_restore_verified:
-        description: Confirm that a production backup was restored and verified separately
+        description: For existing production only, confirm a production backup was separately restored and verified
         required: true
         type: choice
         options:
@@ -40,9 +48,17 @@ jobs:
   production-migrations:
     if: >-
       github.ref == 'refs/heads/main' &&
-      inputs.target_state != 'not-confirmed' &&
-      inputs.backup_restore_verified == 'verified' &&
-      inputs.confirm_migration == 'migrate-production'
+      inputs.confirm_migration == 'migrate-production' &&
+      (
+        (
+          inputs.target_state == 'existing-production' &&
+          inputs.backup_restore_verified == 'verified'
+        ) ||
+        (
+          inputs.target_state == 'verified-empty-bootstrap' &&
+          inputs.legacy_data_disposition == 'intentionally-discarded'
+        )
+      )
     name: Back up and migrate production database
     runs-on: ubuntu-24.04
     environment: production
@@ -185,6 +201,14 @@ jobs:
           if target_state not in {"existing-production", "verified-empty-bootstrap"}:
               raise SystemExit("Production target state must be explicitly selected")
           PY
+
+      - name: Record empty-bootstrap data disposition
+        if: inputs.target_state == 'verified-empty-bootstrap'
+        run: |
+          {
+            echo "Production target: verified empty Neon bootstrap."
+            echo "Legacy SQLite data: intentionally discarded; no legacy records will be imported."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Back up and encrypt the migration target
         run: |
