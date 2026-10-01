@@ -154,25 +154,31 @@ jobs:
                 --command="SELECT count(*) FROM public.django_migrations")"
               public_table_count="$(psql --host=db --username=postgres --dbname=restore_test --tuples-only --no-align \
                 --command="SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_type = '\''BASE TABLE'\''")"
+              app_table_count="$(psql --host=db --username=postgres --dbname=restore_test --tuples-only --no-align \
+                --command="SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_name IN ('\''sklepzdoniczkami_category'\'', '\''sklepzdoniczkami_product'\'', '\''sklepzdoniczkami_order'\'', '\''sklepzdoniczkami_orderitem'\'')")"
               order_count="$(psql --host=db --username=postgres --dbname=restore_test --tuples-only --no-align \
                 --command="SELECT CASE WHEN to_regclass('\''public.sklepzdoniczkami_order'\'') IS NULL THEN -1 ELSE (SELECT count(*) FROM public.sklepzdoniczkami_order) END")"
               case "$migration_count" in ""|*[!0-9]*) exit 1 ;; esac
               case "$public_table_count" in ""|*[!0-9]*) exit 1 ;; esac
+              case "$app_table_count" in ""|*[!0-9]*) exit 1 ;; esac
               case "$order_count" in ""|*[!0-9]*) exit 1 ;; esac
               [ "$migration_count" -gt 0 ]
               [ "$public_table_count" -gt 0 ]
-              printf "migration_count=%s\npublic_table_count=%s\norder_count=%s\n" \
-                "$migration_count" "$public_table_count" "$order_count"
+              [ "$app_table_count" -eq 4 ]
+              printf "migration_count=%s\npublic_table_count=%s\napp_table_count=%s\norder_count=%s\n" \
+                "$migration_count" "$public_table_count" "$app_table_count" "$order_count"
             ')"
 
           migration_count="$(printf '%s\n' "$restore_metrics" | awk -F= '$1 == "migration_count" {print $2}')"
           public_table_count="$(printf '%s\n' "$restore_metrics" | awk -F= '$1 == "public_table_count" {print $2}')"
+          app_table_count="$(printf '%s\n' "$restore_metrics" | awk -F= '$1 == "app_table_count" {print $2}')"
           order_count="$(printf '%s\n' "$restore_metrics" | awk -F= '$1 == "order_count" {print $2}')"
           {
             echo "Restored backup from workflow run: $BACKUP_RUN_ID"
             echo "Destination: isolated, temporary PostgreSQL 18 instance; production Neon was not modified."
             echo "Applied migration records: $migration_count"
             echo "Public tables restored: $public_table_count"
+            echo "Core application tables restored: $app_table_count / 4"
             echo "Orders present in restored snapshot: $order_count"
           } >> "$GITHUB_STEP_SUMMARY"
 
