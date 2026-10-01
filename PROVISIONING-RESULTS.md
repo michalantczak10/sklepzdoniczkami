@@ -109,3 +109,14 @@ Update 2026-09-29 20:47:26:
   użytkownika administratora ani aktywnego katalogu produkcyjnego; przed
   przyjęciem zamówień trzeba utworzyć konto admina i wprowadzić prawdziwe
   produkty. Render nadal jest na planie Free, a media pozostają nietrwałe.
+
+## Weryfikacja webhooka Stripe 2026-10-01
+
+- Sprawdzono produkcyjny endpoint Stripe: wskazuje
+  `https://sklepzdoniczkami.onrender.com/stripe/webhook/` i jest aktywny.
+- Dodano brakującą subskrypcję `checkout.session.expired`; endpoint obsługuje
+  teraz `checkout.session.completed` i `checkout.session.expired`.
+- Potwierdzono poprawność sekretu webhooka przez podpisanie i wysłanie
+  niepłatniczego zdarzenia weryfikacyjnego do produkcyjnej aplikacji; odpowiedź
+  HTTP 200. Nie wykonano płatności ani nie zapisano danych zamówienia.
+- Sekrety Stripe nie zostały zapisane w repozytorium ani wypisane w logach.
