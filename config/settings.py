@@ -20,17 +20,33 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+APP_ENV_FROM_ENV = os.environ.get('APP_ENV')
 load_dotenv(BASE_DIR / '.env')
-
-APP_ENV = os.environ.get('APP_ENV', 'development').strip().lower()
-if APP_ENV not in {'development', 'preprod', 'production'}:
-    raise ImproperlyConfigured('APP_ENV must be development, preprod, or production.')
-
-ENV_SUFFIX = APP_ENV.upper()
-
 
 def env_value(name, default=None):
     return os.environ.get(f'{name}_{ENV_SUFFIX}', default)
+
+
+def resolve_app_env(app_env: str | None, *, is_render: bool) -> str:
+    if not app_env or not app_env.strip():
+        if is_render:
+            raise ImproperlyConfigured('APP_ENV must be explicitly configured on Render.')
+        app_env = 'development'
+
+    resolved_app_env = app_env.strip().lower()
+    if resolved_app_env not in {'development', 'preprod', 'production'}:
+        raise ImproperlyConfigured('APP_ENV must be development, preprod, or production.')
+    return resolved_app_env
+
+
+IS_RENDER = any(
+    os.environ.get(name) for name in ('RENDER', 'RENDER_SERVICE_ID', 'RENDER_EXTERNAL_URL')
+)
+APP_ENV = resolve_app_env(
+    APP_ENV_FROM_ENV if IS_RENDER else os.environ.get('APP_ENV'),
+    is_render=IS_RENDER,
+)
+ENV_SUFFIX = APP_ENV.upper()
 
 
 # Quick-start development settings - unsuitable for production
