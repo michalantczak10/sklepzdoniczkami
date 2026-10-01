@@ -12,11 +12,11 @@ from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command, CommandError
 from django.db import connection
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
-from config.settings import validate_stripe_configuration
+from config.settings import resolve_app_env, validate_stripe_configuration
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -29,6 +29,18 @@ from .views import (
 inventory_migration = import_module(
     "sklepzdoniczkami.migrations.0006_order_inventory_deducted"
 )
+
+
+class AppEnvironmentTests(SimpleTestCase):
+    def test_render_requires_explicit_environment(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "explicitly configured on Render"):
+            resolve_app_env(None, is_render=True)
+
+    def test_local_environment_defaults_to_development(self):
+        self.assertEqual(resolve_app_env(None, is_render=False), "development")
+
+    def test_environment_is_normalized(self):
+        self.assertEqual(resolve_app_env(" PREPROD ", is_render=True), "preprod")
 
 
 class PreprodSeedCommandTests(TestCase):
