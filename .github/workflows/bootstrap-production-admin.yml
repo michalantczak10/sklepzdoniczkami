@@ -4,13 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       username:
-        description: Username for the initial administrator
-        required: true
+        description: Required when mode is create-first-admin
+        required: false
         type: string
       email:
-        description: Email address for the initial administrator
-        required: true
+        description: Required when mode is create-first-admin
+        required: false
         type: string
+      mode:
+        description: Run a read-only production preflight or create the first administrator
+        required: true
+        type: choice
+        options:
+          - preflight-only
+          - create-first-admin
+        default: preflight-only
       confirm_creation:
         description: Confirm one-time creation of the first production administrator
         required: true
@@ -31,7 +39,13 @@ jobs:
   create-first-admin:
     if: >-
       github.ref == 'refs/heads/main' &&
-      inputs.confirm_creation == 'create-first-admin'
+      (
+        inputs.mode == 'preflight-only' ||
+        (
+          inputs.mode == 'create-first-admin' &&
+          inputs.confirm_creation == 'create-first-admin'
+        )
+      )
     name: Create the first production administrator
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -47,6 +61,7 @@ jobs:
 
     steps:
       - name: Check the temporary password secret
+        if: inputs.mode == 'create-first-admin'
         env:
           INITIAL_ADMIN_PASSWORD: ${{ secrets.INITIAL_ADMIN_PASSWORD }}
         shell: bash
@@ -147,7 +162,16 @@ jobs:
               raise SystemExit("Production runtime role cannot create an administrator.")
           PY
 
+      - name: Record successful read-only preflight
+        if: inputs.mode == 'preflight-only'
+        run: |
+          {
+            echo "Read-only production target and role validation passed."
+            echo "No users, orders, products, or payments were created or changed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create the first administrator
+        if: inputs.mode == 'create-first-admin'
         env:
           DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_WEB }}
           ADMIN_USERNAME: ${{ inputs.username }}

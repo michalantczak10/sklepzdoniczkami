@@ -84,16 +84,21 @@ Zapisz mocne, unikalne hasło w menedżerze haseł, a następnie:
 
 1. W GitHub otwórz `Settings` → `Environments` → `production` i dodaj sekret
    `INITIAL_ADMIN_PASSWORD` (co najmniej 16 znaków).
-2. W `Actions` uruchom `Bootstrap first production administrator` z brancha
-   `main`; podaj nazwę użytkownika i e-mail oraz wybierz potwierdzenie
-   `create-first-admin`.
-3. Po udanym runie usuń sekret `INITIAL_ADMIN_PASSWORD` ze środowiska GitHub.
+2. Opcjonalnie najpierw uruchom workflow w trybie `preflight-only`; sprawdzi
+   połączenie z właściwą bazą i uprawnienia bez tworzenia ani zmiany danych.
+3. W `Actions` uruchom `Bootstrap first production administrator` z brancha
+   `main`, wybierz tryb `create-first-admin`, podaj nazwę użytkownika i e-mail
+   oraz wybierz potwierdzenie `create-first-admin`.
+4. Po udanym runie usuń sekret `INITIAL_ADMIN_PASSWORD` ze środowiska GitHub.
    Hasło zachowaj w menedżerze haseł.
 
 Workflow sprawdza przypięty host, bazę `sklepzdoniczkami_prod` i ograniczoną
-rolę runtime. Odmówi działania poza produkcją, gdy istnieje już superuser,
-gdy hasło jest słabe albo dane logowania nie przechodzą walidacji. Nie zmienia
-konfiguracji Stripe ani Rendera i nie uruchamia płatności.
+rolę runtime, używając istniejącego sekretu `DATABASE_URL_PRODUCTION_WEB`
+w GitHub Environment `production`; nie kopiuj URL-a bazy do lokalnego `.env`
+ani do pola wejściowego workflow. Odmówi działania poza produkcją, gdy istnieje
+już superuser, gdy hasło jest słabe albo dane logowania nie przechodzą
+walidacji. Nie zmienia konfiguracji Stripe ani Rendera i nie uruchamia
+płatności.
 
 ## Oddzielne środowiska i bazy danych
 
