@@ -116,6 +116,8 @@ jobs:
           database_url = urlparse(os.environ["DATABASE_URL_PRODUCTION"])
           if database_url.scheme not in {"postgres", "postgresql"}:
               raise SystemExit("Production admin bootstrap requires PostgreSQL.")
+          if database_url.port not in {None, 5432}:
+              raise SystemExit("Production database URL must use the pinned PostgreSQL port.")
           connection_options = {
               key.lower()
               for key, _ in parse_qsl(database_url.query, keep_blank_values=True)

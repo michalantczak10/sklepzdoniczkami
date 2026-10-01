@@ -48,6 +48,7 @@ class Command(BaseCommand):
             or database_settings["USER"] != "sklepzdoniczkami_prod_web_limited"
             or not expected_host
             or database_settings["HOST"].lower() != expected_host.lower()
+            or database_settings.get("PORT") not in {None, "", 5432, "5432"}
             or connection_options.intersection(ROUTING_OPTIONS)
         ):
             raise CommandError(

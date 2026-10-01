@@ -261,6 +261,36 @@ class FirstAdminBootstrapCommandTests(TestCase):
         self.assertFalse(get_user_model().objects.exists())
 
     @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_database_port(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "6543",
+            "OPTIONS": {},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
     def test_bootstrap_refuses_unexpected_active_schema(self):
         database = MagicMock()
         database.settings_dict = {

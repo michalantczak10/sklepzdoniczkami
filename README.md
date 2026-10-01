@@ -74,18 +74,20 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
 - `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
   Artefakty są przechowywane przez 90 dni.
 - `bootstrap-production-admin.yml` pozwala jednorazowo utworzyć pierwszego
-  administratora produkcji. Używaj go dopiero po scaleniu na `main` i po
-  ustawieniu tymczasowego sekretu w środowisku GitHub `production`.
+  administratora produkcji. Read-only preflight można uruchomić z `main`;
+  tworzenie konta wymaga tymczasowego sekretu w GitHub Environment `production`.
 
 ## Pierwszy administrator produkcji
 
 Nie wpisuj hasła administratora w polu wejściowym workflow, issue ani czacie.
-Zapisz mocne, unikalne hasło w menedżerze haseł, a następnie:
+Preflight można uruchomić przed ustawieniem hasła, bez nazwy użytkownika i
+adresu e-mail. Zapisz mocne, unikalne hasło w menedżerze haseł, a następnie:
 
-1. W GitHub otwórz `Settings` → `Environments` → `production` i dodaj sekret
-   `INITIAL_ADMIN_PASSWORD` (co najmniej 16 znaków).
-2. Opcjonalnie najpierw uruchom workflow w trybie `preflight-only`; sprawdzi
+1. Opcjonalnie uruchom workflow w trybie `preflight-only`; sprawdzi
    połączenie z właściwą bazą i uprawnienia bez tworzenia ani zmiany danych.
+2. Gdy będziesz gotowy do utworzenia konta, w GitHub otwórz
+   `Settings` → `Environments` → `production` i dodaj sekret
+   `INITIAL_ADMIN_PASSWORD` (co najmniej 16 znaków).
 3. W `Actions` uruchom `Bootstrap first production administrator` z brancha
    `main`, wybierz tryb `create-first-admin`, podaj nazwę użytkownika i e-mail
    oraz wybierz potwierdzenie `create-first-admin`.
