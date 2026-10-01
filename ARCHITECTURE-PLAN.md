@@ -160,8 +160,10 @@ Docelowo:
   z jawnym potwierdzeniem, przypiętym hostem Neon, walidacją bazy i historią
   migracji (albo jawnie wybranym pustym bootstrapem) oraz zaszyfrowaną kopią
   przed DDL. Wymaga skonfigurowania
-  `DATABASE_URL_PRODUCTION_MIGRATE`, `EXPECTED_DATABASE_HOST_PRODUCTION` i
-  sekretów szyfrujących. Nie był uruchamiany; nie wykonywać migracji ani
+  `DATABASE_URL_PRODUCTION_MIGRATE`, `PRODUCTION_DATABASE_HOST` i
+  sekretów szyfrujących. Limited role URLs są zapisane w GitHub Environment
+  `production`; workflow dodatkowo odrzuca role z nadmiernymi uprawnieniami.
+  Nie był uruchamiany; nie wykonywać migracji ani
   deployu production przed potwierdzeniem źródła danych i odtworzenia backupu.
 - Dodawać testy migracji i plan rollbacku dla zmian schematu; migracje muszą
   być kompatybilne z wersją aplikacji działającą równolegle podczas deployu.
@@ -333,9 +335,18 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   `django_migrations`, a branch `prod` był pusty przy ostatniej weryfikacji.
   Nie zmieniać ani nie usuwać baz, dopóki źródło danych produkcyjnych i
   możliwość odtworzenia nie zostaną potwierdzone.
+- Read-only probe potwierdził, że produkcyjny endpoint Neon i baza
+  `sklepzdoniczkami_prod` są dostępne, ale baza nie ma jeszcze tabel publicznych.
+  Utworzono ograniczone role `_migrate_limited` i `_web_limited`: migrator ma
+  DDL tylko w `public`, aplikacja nie ma CREATE, a domyślne uprawnienia dają jej
+  DML i dostęp do sekwencji. Ich connection stringi są sekretami
+  `DATABASE_URL_PRODUCTION_MIGRATE` i `DATABASE_URL_PRODUCTION_WEB` w
+  GitHub Environment `production`. Starsze role production pozostają
+  niezmienione i nie należy ich używać jako URL-i runtime/migracji.
 - Produkcyjny workflow migracyjny jest dostępny na `main`, ale nie był
-  uruchamiany. Wymaga jawnego hosta Neon jako `EXPECTED_DATABASE_HOST_PRODUCTION`,
-  roli migracyjnej, sekretów backupu oraz potwierdzenia odtworzenia. Pustą
+  uruchamiany. Wymaga jawnego hosta Neon jako `PRODUCTION_DATABASE_HOST`,
+  ograniczonej roli migracyjnej, sekretów backupu oraz potwierdzenia
+  odtworzenia. Pustą
   bazę dopuszcza wyłącznie jako jawny bootstrap bez istniejących tabel;
   inne niejednoznaczne stany odrzuca.
 - Produkcja nadal jest na Render Free i nie ma trwałego storage mediów.

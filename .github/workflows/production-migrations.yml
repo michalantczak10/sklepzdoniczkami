@@ -54,7 +54,7 @@ jobs:
       SITE_NAME: Sklepzdoniczkami
       DATABASE_NAME_PRODUCTION: sklepzdoniczkami_prod
       DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_MIGRATE }}
-      EXPECTED_DATABASE_HOST_PRODUCTION: ${{ vars.EXPECTED_DATABASE_HOST_PRODUCTION }}
+      PRODUCTION_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
       PRODUCTION_TARGET_STATE: ${{ inputs.target_state }}
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
       BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
@@ -76,13 +76,13 @@ jobs:
 
       - name: Validate production migration target
         run: |
-          if [ -z "$DATABASE_URL_PRODUCTION" ] || [ -z "$EXPECTED_DATABASE_HOST_PRODUCTION" ]; then
+          if [ -z "$DATABASE_URL_PRODUCTION" ] || [ -z "$PRODUCTION_DATABASE_HOST" ]; then
             echo "Production migration URL and expected database host are required" >&2
             exit 1
           fi
           python - <<'PY'
           import os
-          from urllib.parse import unquote, urlparse
+          from urllib.parse import urlparse
 
           import psycopg2
 
@@ -91,13 +91,13 @@ jobs:
               raise SystemExit("Production migration target must use PostgreSQL")
           if database_url.path.lstrip("/").split("?")[0] != "sklepzdoniczkami_prod":
               raise SystemExit("Production migration target must be sklepzdoniczkami_prod")
-          expected_host = os.environ["EXPECTED_DATABASE_HOST_PRODUCTION"]
+          expected_host = os.environ["PRODUCTION_DATABASE_HOST"]
           if (database_url.hostname or "").lower() != expected_host.lower():
               raise SystemExit(
                   "Production migration target does not match the approved database host"
               )
-          if "migrat" not in unquote(database_url.username or "").lower():
-              raise SystemExit("Production migration target must use a migration role")
+          if database_url.username != "sklepzdoniczkami_prod_migrate_limited":
+              raise SystemExit("Production migration target must use the limited migration role")
 
           with psycopg2.connect(
               os.environ["DATABASE_URL_PRODUCTION"],
@@ -105,8 +105,23 @@ jobs:
               options="-c default_transaction_read_only=on",
           ) as connection:
               with connection.cursor() as cursor:
-                  cursor.execute("SELECT current_database(), current_user")
-                  database_name, database_user = cursor.fetchone()
+                  cursor.execute(
+                      "SELECT current_database(), current_user, "
+                      "has_schema_privilege(current_user, 'public', 'CREATE'), "
+                      "rolcreatedb, rolcreaterole, rolsuper, rolreplication, "
+                      "pg_has_role(current_user, 'neon_superuser', 'MEMBER') "
+                      "FROM pg_roles WHERE rolname = current_user"
+                  )
+                  (
+                      database_name,
+                      database_user,
+                      can_create_objects,
+                      can_create_databases,
+                      can_create_roles,
+                      is_superuser,
+                      can_replicate,
+                      is_neon_superuser,
+                  ) = cursor.fetchone()
                   cursor.execute(
                       "SELECT EXISTS ("
                       "SELECT 1 FROM information_schema.tables "
@@ -126,8 +141,20 @@ jobs:
                       migration_count = 0
           if database_name != "sklepzdoniczkami_prod":
               raise SystemExit("Connected to an unexpected production database")
-          if "migrat" not in database_user.lower():
-              raise SystemExit("Connected using a role that is not designated for migrations")
+          if not can_create_objects:
+              raise SystemExit(
+                  "Production migration role cannot create objects in the public schema"
+              )
+          if any(
+              (
+                  can_create_databases,
+                  can_create_roles,
+                  is_superuser,
+                  can_replicate,
+                  is_neon_superuser,
+              )
+          ):
+              raise SystemExit("Production migration role has excessive privileges")
           target_state = os.environ["PRODUCTION_TARGET_STATE"]
           if target_state == "existing-production" and (
               not has_migration_history or migration_count == 0
