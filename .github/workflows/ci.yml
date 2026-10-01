@@ -39,6 +39,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Validate local Compose configuration
+        run: docker compose config --quiet
+
       - name: Verify Neon dev read-only connection
         if: github.event_name != 'pull_request'
         env:

@@ -16,10 +16,17 @@ docker compose up -d db
 ```
 
 `docker compose up -d db` uruchamia lokalny PostgreSQL dla developmentu,
-dostępny z hosta na porcie `5434`; `.env.example` zawiera zgodny URL i lokalne
-poświadczenia przykładowej bazy. Kontener aplikacji łączy się z bazą przez
-wewnętrzny adres Docker `db:5432`. Uzupełnij `.env` zmiennymi z sufiksem
-`_DEVELOPMENT`, a następnie uruchom:
+dostępny wyłącznie z tego komputera pod `127.0.0.1:5434`. `.env.example`
+zawiera zgodny `DATABASE_URL_DEVELOPMENT` i lokalne hasło przykładowej bazy.
+Jeśli wcześniej utworzono `.env`, skopiuj do niego te dwie wartości ręcznie,
+nie nadpisując pozostałych sekretów i ustawień. Przy zmianie hasła PostgreSQL
+zaktualizuj również hasło w URL-u; sama zmiana `POSTGRES_PASSWORD` nie zmienia
+hasła w już zainicjalizowanym wolumenie. W takim przypadku zmień hasło roli
+poleceniem `\password sklepzdoniczkami` w sesji `psql` uruchomionej przez
+`docker compose exec db psql -U sklepzdoniczkami -d postgres`. Nie usuwaj
+wolumenu, aby zmienić hasło — zawiera lokalne dane. Nie używaj tego lokalnego
+hasła w innych środowiskach. Następnie uzupełnij `.env` zmiennymi z sufiksem
+`_DEVELOPMENT` i uruchom aplikację Django na hoście:
 
 ```powershell
 python manage.py migrate
@@ -28,12 +35,12 @@ python manage.py runserver
 ```
 
 Konfigurację Compose można sprawdzić bez uruchamiania kontenerów poleceniem
-`docker compose config --quiet`. W CI walidacja uruchamia się automatycznie.
+`docker compose config --quiet`. CI wykonuje tę walidację automatycznie.
 
 Sklep będzie dostępny pod `http://127.0.0.1:8000/`, a panel administratora pod
-`http://127.0.0.1:8000/admin/`. Domyślnie aplikacja używa SQLite; PostgreSQL
-można skonfigurować przez `DATABASE_URL_DEVELOPMENT`. Klucze testowe Stripe
-pochodzą z panelu Stripe i nie należy ich commitować.
+`http://127.0.0.1:8000/admin/`. Jeśli `DATABASE_URL_DEVELOPMENT` nie jest
+ustawione, Django użyje SQLite. Klucze testowe Stripe pochodzą z panelu Stripe
+i nie należy ich commitować.
 
 ## Testy
 
@@ -55,9 +62,10 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
 ## GitHub Actions
 
 - `ci.yml` uruchamia kontrole Django, testy i testy przeglądarkowe dla pull
-  requestów do `main`/`dev` oraz zmian na tych branchach. Testy Django używają
-  Neon dev i osobnej, tworzonej dla danego uruchomienia bazy testowej; job
-  sprząta ją również po nieudanym teście.
+  requestów do `main`/`dev` oraz pushy na tych branchach. Testy PR używają
+  SQLite (`config.settings_test`) i nie otrzymują sekretów Neon. Testy po
+  pushu używają Neon dev oraz osobnej bazy testowej dla danego uruchomienia;
+  job sprząta ją również po nieudanym teście.
 - `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
   Artefakty są przechowywane przez 90 dni.
 
@@ -67,7 +75,7 @@ Projekt ma trzy odizolowane środowiska:
 
 | Środowisko | Aplikacja | Baza | Dane i płatności |
 |---|---|---|---|
-| Development | Aplikacja lokalna/CI | Neon `sklepzdoniczkami_dev` | Testowe |
+| Development | Host Django / CI | Lokalny PostgreSQL; push: Neon dev; PR: SQLite | Testowe |
 | Preprod | Render `sklepzdoniczkami-preprod` | Neon `sklepzdoniczkami_preprod` | Katalog syntetyczny, płatności testowe lub wyłączone |
 | Produkcja | Render `sklepzdoniczkami` | Neon `sklepzdoniczkami_prod` | Prawdziwe zamówienia, klucze Stripe live |
 
