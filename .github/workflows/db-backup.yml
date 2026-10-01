@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           docker run --rm \
             --user "$(id -u):$(id -g)" \
-            --env DATABASE_URL_PRODUCTION \
+            --env DATABASE_URL_PRODUCTION_BACKUP \
             --volume "$GITHUB_WORKSPACE:/work" \
             --workdir /work \
             postgres:18 sh -euc \
