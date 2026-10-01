@@ -1,6 +1,6 @@
 # Plan architektury sklepu
 
-Data przeglądu: 2026-09-30
+Data przeglądu: 2026-10-01
 
 Ten dokument jest punktem odniesienia dla decyzji o bazach danych,
 środowiskach, branchach, review i wdrożeniach. Zmiany w planie powinny wynikać
@@ -115,23 +115,22 @@ między historią integracji i wydania.
   sekretów ani wdrożeń. Dla krytycznych zmian wymagać osobnego ręcznego
   przeglądu wdrożenia.
 
-### Ustawienia GitHub do doprowadzenia do celu
+### Ustawienia GitHub i ograniczenia
 
-- `main` ma już wymagane checki `Django tests` i
-  `End-to-end tests (Playwright)`, ale obecnie nie wymaga PR ani zatwierdzenia.
-  Wymusić PR, zakaz bezpośredniego push/force-push i co najmniej jedno
-  zatwierdzenie niezależnego reviewera, jeśli jest dostępny; review subagentów
-  nie zastępuje wymogu GitHub.
-- `dev` nie jest obecnie chroniony. Wymusić PR, zakaz bezpośredniego
-  push/force-push i te same wymagane checki; do czasu skutecznej ochrony nie
-  udostępniać pushowym jobom sekretów development.
+- `main` i `dev` wymagają PR-ów oraz checków `Django tests` i
+  `End-to-end tests (Playwright)`; bezpośrednie pushowanie, force-push i
+  usuwanie tych branchy są zablokowane. Liczba wymaganych zatwierdzeń GitHub
+  wynosi obecnie 0, zgodnie z solo trybem pracy.
+- Trzy niezależne review subagentów są wymagane jako proces przed scaleniem,
+  ale nie są egzekwowane przez GitHub jako status check. Jeśli pojawi się
+  niezależny człowiek-reviewer, ponownie rozważyć wymaganie co najmniej jednego
+  zatwierdzenia GitHub.
 - Przy pracy solo, jeśli niezależny człowiek-reviewer nie jest dostępny, jawnie
-  zdecydować o liczbie wymaganych approvals albo utrzymać zaufanego
-  zewnętrznego reviewera; nie obchodzić reguły po cichu. Subagenci nie spełniają
-  wymagania GitHub approval i nie zastępują zatwierdzenia innej osoby.
-- Zachować ograniczenia środowisk GitHub: sekrety deweloperskie dostępne
-  tylko na `main`/`dev`; workflow PR nie otrzymuje ich. Sekret produkcyjny
-  dostępny wyłącznie w chronionym środowisku produkcyjnym.
+  uzgodnić tę różnicę; subagenci nie spełniają wymagania GitHub approval i nie
+  zastępują zatwierdzenia innej osoby.
+- Zachować ograniczenia środowisk GitHub: workflow PR używa środowiska `ci-pr`
+  bez sekretów Neon; pushowe joby korzystają z sekretów chronionych środowisk
+  `development` i `preprod`.
 
 ## CI, migracje i deploye
 
@@ -139,7 +138,8 @@ Obecny projekt ma jeden workflow CI z testami Django i Playwright; są to
 oddzielne joby jednego pipeline'u, nie dwa konkurencyjne CI. Backup jest osobnym
 workflowem operacyjnym i powinien nim pozostać.
 
-Obecnie testy PR wybierają `config.settings_test`, czyli in-memory SQLite.
+Testy PR wybierają `config.settings_test`, czyli SQLite, bez sekretów Neon.
+Pushowe joby używają tymczasowej bazy testowej w Neon i sprzątają ją po runie.
 Kod zamówień i stanów magazynowych korzysta z `select_for_update()` w
 transakcjach; zielone testy SQLite nie weryfikują semantyki blokad PostgreSQL.
 To uzasadnia usługową bazę PostgreSQL w CI PR, bez sekretów Neon.
@@ -151,21 +151,22 @@ Docelowo:
 - Push na `dev`/`main`: integracyjne kontrole Neon na dedykowanej bazie
   testowej z unikalną nazwą i gwarantowanym sprzątaniem. Testy nie zapisują
   danych do współdzielonych tabel aplikacji.
-- Preprod wdrażany z `dev`; production z `main` po ręcznej akceptacji wydania.
-- Wybrać jedną kontrolowaną ścieżkę migracji. Obecnie `render.yaml` uruchamia
-  `migrate` w `buildCommand`; nie dublować tego osobnym jobem CI. Docelowo
-  migracje uruchamia osobny job przed wdrożeniem, z ograniczoną rolą migrate;
-  web role nie ma uprawnień DDL. Produkcyjne migracje wymagają jawnego gate'u.
+- Preprod wdrażany z `dev` po zielonych checkach; production z `main` dopiero
+  po ręcznej akceptacji wydania.
+- Preprod migracje wykonuje osobny job GitHub Actions przed deployem, używając
+  ograniczonej roli migrate; Render używa roli runtime i nie wykonuje DDL.
+  Ta ścieżka nie jest jeszcze wdrożona dla production: jego build nadal
+  zawiera `migrate`, a auto-deploy jest wyłączony. Nie uruchamiać ręcznego
+  deployu production przed potwierdzeniem bazy, backupu i migracji.
 - Dodawać testy migracji i plan rollbacku dla zmian schematu; migracje muszą
   być kompatybilne z wersją aplikacji działającą równolegle podczas deployu.
 
 ## Hosting, pliki i operacje
 
-Na razie pozostać przy Renderze — jest już skonfigurowany dla Django — i Neon.
-Nie przenosić sklepu do innego dostawcy, zanim nie zostanie ustalona przyczyna
-problemu preprod i potwierdzony produkcyjny URL. `render.yaml` wskazuje obecnie
-branch `main` zarówno dla produkcji, jak i preprod; należy zmienić preprod na
-`dev`, a produkcji nie wdrażać automatycznie przy każdym pushu do `main`.
+Na razie pozostać przy Renderze i Neon. Live preprod jest teraz skierowany na
+branch `dev`, korzysta z ograniczonej roli runtime i przeszedł sprawdzenie
+HTTP oraz syntetycznego katalogu. Produkcja nadal wskazuje `main`, ale jej
+auto-deploy jest wyłączony zarówno w Renderze, jak i w `render.yaml`.
 
 **Warunek wejścia w realną produkcję:** obecny Render `free` nie jest
 akceptowalny dla sklepu przyjmującego prawdziwe zamówienia. Render wprost
@@ -221,61 +222,56 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 ### P0 — bezpieczeństwo danych i uruchomienie środowisk
 
-1. W Renderze wyłączyć auto-deploy produkcji do czasu potwierdzenia celu bazy
-   i ścieżki migracji. Usługa jest spięta z `main`, a Render domyślnie deployuje
-   po pushu; `render.yaml` uruchamia `migrate` w `buildCommand`. Do czasu
-   ustawienia gate'u nie scalać ani nie wdrażać zmian, które mogą uruchomić
-   niezweryfikowaną migrację produkcji.
-2. Zabezpieczyć `dev` przed bezpośrednim pushem, zanim pushowe joby CI będą
-   mogły używać sekretów development. Obecnie branch nie jest chroniony,
-   a push uruchamia workflow w środowisku `development`; do czasu wdrożenia
-   ochrony usunąć sekrety z tych jobów albo wyłączyć sekrety przy pushach na
-   `dev`.
-3. Wymusić dla `main` aktualizacje wyłącznie przez PR, bez bezpośrednich
-   pushy/force-pushy i bez cichego obejścia reguł. Wymagać zielonych checków
-   CI oraz co najmniej jednego niezależnego zatwierdzenia, jeśli dostępny jest
-   reviewer. Do czasu potwierdzenia bazy nie scalać zmian, które mogą uruchomić
-   niezweryfikowaną migrację.
-4. W Renderze, bez kopiowania sekretu do czatu, potwierdzić host/nazwę bazy
-   używaną przez usługę produkcyjną i zestawić je z Neon `prod`. Obecny raport
-   wskazuje pustą bazę Neon `prod` i niepotwierdzony URL aktywnej usługi.
-   Nie wykonywać migracji ani nie przełączać live na pustą bazę.
-5. Po potwierdzeniu aktywnej bazy wykonać backup i próbę odtworzenia na
-   izolowanym branchu. Zweryfikować nie tylko schemat i integralność backupu,
-   ale też obecność i zgodność oczekiwanych danych biznesowych; obecny workflow
-   sprawdza endpoint i istnienie tabel, nie ich zawartość. Przed zmianą
-   planu/hostingu zachować również istniejące pliki mediów i zweryfikować ich
-   kopię; nie polegać na backupie, który nie przeszedł testu odtworzenia.
-6. Przygotować produkcyjny root branch albo jawnie zaakceptować zewnętrzny
-   backup zamiast PITR w wariancie przejściowym. Przed cutover zatrzymać zapisy
-   albo wykonać końcową synchronizację zmian, zweryfikować dane docelowe i
-   dopiero potem przełączyć ruch produkcyjny. Nie przełączać live na pustą bazę
-   ani na kopię, która nie zawiera wszystkich zapisów przyjętych przed cutover.
-7. Przed przyjmowaniem prawdziwych zamówień zmienić produkcję z Render Free na
-   odpowiedni płatny plan lub inny kwalifikujący się hosting. Najpierw jawnie
-   wybrać i zatwierdzić koszt planu, a media skopiować i zweryfikować w object
-   storage; dopiero potem wdrożyć zmianę konfiguracji i planu usługi. Do tego
-   czasu nie synchronizować Blueprintu jako wdrożenia live. Jeśli produkcja
-   już obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
+1. **Ukończone:** wyłączyć auto-deploy production. Live ustawienie Rendera i
+   `render.yaml` mają `autoDeployTrigger: "off"`; produkcyjny build nadal
+   zawiera `migrate`, więc nie uruchamiać go ręcznie przed wykonaniem punktów
+   poniżej.
+2. **Ukończone:** chronić `dev` przed bezpośrednim pushem. Pull requesty nie
+   otrzymują sekretów Neon; pushowe joby uruchamiają się w chronionym
+   środowisku.
+3. **Ukończone z ograniczeniem:** `main` i `dev` wymagają PR-ów i zielonych
+   checków oraz blokują force-push/usuwanie. GitHub nie wymaga zatwierdzeń
+   (0 approvals); trzy pozytywne review subagentów są procesem, a nie
+   egzekwowanym statusem GitHub.
+4. **Bloker production:** usługa Render ma starszą, niesufiksowaną zmienną
+   `DATABASE_URL`, wskazującą bazę `sklepzdoniczkami` i rolę owner. Jej
+   endpoint nie należy do projektu Neon widocznego przez aktualny klucz API.
+   Brakuje `APP_ENV`, `DATABASE_URL_PRODUCTION` i
+   `DJANGO_SECRET_KEY_PRODUCTION`; aktualny kod domyślnie wybiera
+   `APP_ENV=development` i SQLite, bo nie ma `DATABASE_URL_DEVELOPMENT`.
+   Nie przepinać production na Neon `prod`, nie migrować i nie usuwać starej
+   bazy, dopóki nie zostaną ustalone aktywne dane oraz ich kopia.
+5. **Oczekuje:** po potwierdzeniu źródła production wykonać backup i próbę
+   odtworzenia na izolowanym branchu. Zweryfikować dane biznesowe oraz kopię
+   mediów; obecny workflow backupu sprawdza endpoint i schemat, ale nie
+   potwierdza zawartości produkcyjnej.
+6. **Oczekuje:** przygotować produkcyjny root branch lub jawnie zaakceptować
+   niezależny backup zamiast PITR. Cutover wykonać dopiero po końcowej
+   synchronizacji zapisów i weryfikacji danych docelowych.
+7. **Decyzja budżetowa:** Render production pozostaje na Free, bez trwałego
+   storage mediów. Przed przyjmowaniem prawdziwych zamówień wybrać płatny plan
+   lub hosting oraz object storage i dopiero po migracji/zweryfikowaniu mediów
+   wdrożyć te zmiany. Nie zmieniać planu automatycznie. Jeśli sklep już
+   obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
    trwałości danych.
-8. Naprawić preprod na Renderze na podstawie logów i sprawdzić endpoint
-   zdrowia, migracje, połączenie z właściwą bazą oraz syntetyczny katalog.
+8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
+   runtime role bez DDL, a GitHub Actions wykonuje metadata rename i migracje
+   rolą migrate przed deployem. Render wdraża po zielonych checkach;
+   sprawdzono HTTP 200 i syntetyczny katalog.
 
 ### P1 — spójny developer workflow
 
-1. Skierować Render preprod na `dev`, a wdrożenie produkcji zrobić ręcznym
-   gate'em z `main`.
-2. Ograniczyć publikację portu PostgreSQL z Docker Compose do `127.0.0.1`
+1. **Ukończone:** Render preprod wskazuje `dev`; production ma ręczny gate
+   (`autoDeployTrigger: "off"`) z `main`.
+2. **Ukończone:** ograniczyć publikację portu PostgreSQL z Docker Compose do `127.0.0.1`
    (np. `127.0.0.1:5434:5432`), nie wszystkich interfejsów hosta.
-3. Uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym PostgreSQL
-   GitHub Actions zamiast polegać wyłącznie na SQLite.
-4. Ujednolicić README i `.env.example`: przykład nie ustawia obecnie
-   `DATABASE_URL_DEVELOPMENT`, więc hostowe Django używa SQLite, mimo że
-   instrukcja sugeruje lokalny PostgreSQL z Docker Compose. README twierdzi też,
-   że testy Django w CI używają Neon dev i osobnej bazy testowej, chociaż joby
-   pull requestów używają SQLite; opisać osobno zachowanie PR i pushów albo
-   zmienić konfigurację workflow.
-5. Uzgodnić jedną kontrolowaną ścieżkę migracji.
+3. **Oczekuje:** uruchamiać PR-owe testy PostgreSQL bez sekretów na usługowym
+   PostgreSQL GitHub Actions zamiast polegać wyłącznie na SQLite.
+4. **Ukończone:** ujednolicić README i `.env.example` oraz rozróżnić testy PR
+   na SQLite od pushowych testów Neon.
+5. **Częściowo ukończone:** preprod ma jedną kontrolowaną ścieżkę migracji;
+   wdrożyć analogiczny, ręcznie zatwierdzany job migracyjny dla production
+   dopiero po potwierdzeniu jej właściwej bazy.
 
 ### P2 — izolacja produkcji i odporność
 
@@ -289,30 +285,34 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 ## Stan ustalony przy przeglądzie
 
-- Aplikacja jest Django z jednym głównym modułem sklepu i PostgreSQL; nie ma
-  uzasadnienia dla MongoDB ani mikroserwisów.
-- Repo ma Compose dla lokalnego PostgreSQL oraz ustawienia SQLite używane m.in.
-  w testach PR.
-- `.env.example` pozostawia `DATABASE_URL_DEVELOPMENT` nieustawione i wskazuje
-  SQLite, a README opisuje go jako plik z lokalnym URL-em PostgreSQL; należy
-  wyjaśnić tę niespójność. README opisuje również testy CI jako korzystające
-  z Neon dev, mimo że testy PR działają na in-memory SQLite.
-- Neon API sprawdzone 2026-09-30: jeden projekt z `dev` jako root oraz
-  `preprod` i `prod` jako child branche `dev`; poświadczenia CI są ograniczone
-  do środowiska development, a testy PR nie dostają tych sekretów. Child
-  branch `prod` nie obsługuje PITR.
-- `main` wymaga dwóch checków CI i egzekwuje ochronę również wobec
-  administratorów, ale obecnie nie wymaga zatwierdzenia PR; `dev` nie jest
-  chroniony. Push na `dev` uruchamia workflow CI w środowisku `development`,
-  które udostępnia sekrety bazodanowe. Obie usługi Render w `render.yaml`
-  wskazują `main`, a obie mają `plan: free`.
-- Render domyślnie wdraża po pushu na podpięty branch; produkcyjny
-  `buildCommand` uruchamia migracje. Auto-deploy produkcji trzeba zatrzymać
-  do czasu potwierdzenia aktywnej bazy i kontrolowanej ścieżki migracji.
-- Neon `prod` był pusty przy ostatniej weryfikacji. Workflow backupu sprawdza
-  oczekiwany endpoint i istnienie tabel, ale nie potwierdza obecności danych
-  biznesowych. Preprod Render zgłaszał błąd i nie można było sprawdzić logów
-  bez dostępu do Render Dashboard/API.
+- Aplikacja jest Django z PostgreSQL; nie ma uzasadnienia dla MongoDB ani
+  mikroserwisów. Lokalny Compose uruchamia tylko PostgreSQL, a PR CI używa
+  SQLite.
+- Stan Neon sprawdzony 2026-10-01: jeden projekt z `dev` jako root oraz
+  `preprod` i `prod` jako child branche. Child `prod` nie obsługuje PITR;
+  docelowa separacja projektu production pozostaje rekomendacją.
+- `main` i `dev` wymagają PR-ów, dwóch checków CI, zakazują force-push i
+  usuwania; wymagane approvals wynoszą 0. Pull requesty używają `ci-pr` bez
+  sekretów Neon. Push na `dev` wykonuje testy Neon, a chroniony job migracyjny
+  preprod zakończył się powodzeniem dla wdrażanego commita.
+- Render production wskazuje `main`, ma plan Free i `autoDeployTrigger: off`.
+  Jego niesufiksowany `DATABASE_URL` wskazuje bazę `sklepzdoniczkami` i rolę
+  owner, a endpoint nie należy do widocznego projektu Neon. Brak
+  `APP_ENV`/zmiennych sufiksowanych oznacza, że aktualny kod wybiera
+  development/SQLite. Nie potwierdzono, czy stary endpoint zawiera dane
+  biznesowe; nie wykonywano tam migracji ani cutoveru.
+- Render preprod wskazuje `dev`, ma plan Free i `autoDeployTrigger: checksPass`.
+  Używa bazy `sklepzdoniczkami_preprod` na znanym branchu `preprod`, z
+  oddzielną rolą runtime; sekrety migracyjne są wyłącznie w GitHub Environment
+  `preprod`. Deploy i syntetyczny katalog zweryfikowano przez HTTP 200.
+- Workflow backupu nadal nie dowodzi istnienia użytecznych kopii danych
+  produkcyjnych; targetowany `sklepzdoniczkami_prod` zgłaszał brak
+  `django_migrations`, a branch `prod` był pusty przy ostatniej weryfikacji.
+  Nie zmieniać ani nie usuwać baz, dopóki źródło danych produkcyjnych i
+  możliwość odtworzenia nie zostaną potwierdzone.
+- Produkcja nadal jest na Render Free i nie ma trwałego storage mediów.
+  Płatny plan i object storage wymagają decyzji budżetowej oraz migracji
+  zweryfikowanych plików.
 - Klucze szyfrujące pozostają repozytoryjnymi sekretami do czasu migracji
   historycznych backupów; nie rotować ich bez planu zachowania odczytu starych
   artefaktów.
