@@ -158,6 +158,7 @@ jobs:
                 --command="SELECT CASE WHEN to_regclass('\''public.sklepzdoniczkami_order'\'') IS NULL THEN -1 ELSE (SELECT count(*) FROM public.sklepzdoniczkami_order) END")"
               case "$migration_count" in ""|*[!0-9]*) exit 1 ;; esac
               case "$public_table_count" in ""|*[!0-9]*) exit 1 ;; esac
+              case "$order_count" in ""|*[!0-9]*) exit 1 ;; esac
               [ "$migration_count" -gt 0 ]
               [ "$public_table_count" -gt 0 ]
               printf "migration_count=%s\npublic_table_count=%s\norder_count=%s\n" \
