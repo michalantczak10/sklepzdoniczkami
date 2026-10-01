@@ -155,9 +155,14 @@ Docelowo:
   po ręcznej akceptacji wydania.
 - Preprod migracje wykonuje osobny job GitHub Actions przed deployem, używając
   ograniczonej roli migrate; Render używa roli runtime i nie wykonuje DDL.
-  Ta ścieżka nie jest jeszcze wdrożona dla production: jego build nadal
-  zawiera `migrate`, a auto-deploy jest wyłączony. Nie uruchamiać ręcznego
-  deployu production przed potwierdzeniem bazy, backupu i migracji.
+  Build production w `render.yaml` nie wykonuje migracji. Workflow
+  `production-migrations.yml` udostępnia ręczną ścieżkę wyłącznie z `main`,
+  z jawnym potwierdzeniem, przypiętym hostem Neon, walidacją bazy i historią
+  migracji (albo jawnie wybranym pustym bootstrapem) oraz zaszyfrowaną kopią
+  przed DDL. Wymaga skonfigurowania
+  `DATABASE_URL_PRODUCTION_MIGRATE`, `EXPECTED_DATABASE_HOST_PRODUCTION` i
+  sekretów szyfrujących. Nie był uruchamiany; nie wykonywać migracji ani
+  deployu production przed potwierdzeniem źródła danych i odtworzenia backupu.
 - Dodawać testy migracji i plan rollbacku dla zmian schematu; migracje muszą
   być kompatybilne z wersją aplikacji działającą równolegle podczas deployu.
 
@@ -226,10 +231,10 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 ### P0 — bezpieczeństwo danych i uruchomienie środowisk
 
-1. **Ukończone:** wyłączyć auto-deploy production. Live ustawienie Rendera i
-   `render.yaml` mają `autoDeployTrigger: "off"`; produkcyjny build nadal
-   zawiera `migrate`, więc nie uruchamiać go ręcznie przed wykonaniem punktów
-   poniżej.
+1. **Częściowo ukończone:** live ustawienie Rendera i `render.yaml` mają
+   `autoDeployTrigger: "off"`, a manifest nie uruchamia produkcyjnych
+   migracji podczas builda. Aktywnej komendy builda Render nie zmieniano.
+   Ręczny workflow migracyjny istnieje, ale nie był uruchamiany.
 2. **Ukończone:** chronić `dev` przed bezpośrednim pushem. Pull requesty nie
    otrzymują sekretów Neon; pushowe joby uruchamiają się w chronionym
    środowisku.
@@ -241,8 +246,11 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    `DATABASE_URL`, wskazującą bazę `sklepzdoniczkami` i rolę owner. Jej
    endpoint nie należy do projektu Neon widocznego przez aktualny klucz API.
    Brakuje `APP_ENV`, `DATABASE_URL_PRODUCTION` i
-   `DJANGO_SECRET_KEY_PRODUCTION`; aktualny kod domyślnie wybiera
+   `DJANGO_SECRET_KEY_PRODUCTION`; obecnie wdrożony kod wybiera
    `APP_ENV=development` i SQLite, bo nie ma `DATABASE_URL_DEVELOPMENT`.
+   Kod po merge'u #46 odrzuca brak jawnego `APP_ENV` na Renderze, więc
+   następny deploy zatrzyma się bezpiecznie, dopóki konfiguracja nie zostanie
+   poprawiona. Produkcja nie została wdrożona ponownie.
    SQLite znajduje się na efemerycznym filesystemie Render, więc zapisy
    zamówień mogą zniknąć przy restarcie/redeployu. Jeśli sklep już przyjmuje
    prawdziwe zamówienia, potraktować to jako pilny incydent trwałości danych.
@@ -265,8 +273,8 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
    runtime role bez DDL, a workflow CI na branchu `dev` wykonuje metadata
    rename i migracje rolą migrate przed deployem ([workflow](https://github.com/michalantczak10/sklepzdoniczkami/blob/dev/.github/workflows/ci.yml),
-   [udany run](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36829814318)).
-   Render wdraża po zielonych checkach; sprawdzono HTTP 200 i syntetyczny katalog.
+   [udany run](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36842344038)).
+   Render wdrożył commit `65522f2`; sprawdzono HTTP 200.
 
 ### P1 — spójny developer workflow
 
@@ -308,10 +316,13 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 - Render production wskazuje `main`, ma plan Free i `autoDeployTrigger: off`.
   Jego niesufiksowany `DATABASE_URL` wskazuje bazę `sklepzdoniczkami` i rolę
   owner, a endpoint nie należy do widocznego projektu Neon. Brak
-  `APP_ENV`/zmiennych sufiksowanych oznacza, że aktualny kod wybiera
-  development/SQLite z pliku na efemerycznym filesystemie Render. Zapisy
-  mogą nie przetrwać restartu/redeployu; nie potwierdzono, czy stary endpoint
-  zawiera dane biznesowe i nie wykonywano tam migracji ani cutoveru.
+  `APP_ENV`/zmiennych sufiksowanych oznacza, że aktualnie wdrożony kod wybiera
+  development/SQLite z pliku na efemerycznym filesystemie Render. Kod na
+  `main` po merge'u #46 nie pozwala już na taki fallback przy kolejnym
+  uruchomieniu na Renderze; auto-deploy pozostaje wyłączony i produkcji nie
+  wdrażano. Zapisy mogą nie przetrwać restartu/redeployu; nie potwierdzono,
+  czy stary endpoint zawiera dane biznesowe i nie wykonywano tam migracji
+  ani cutoveru.
 - Render preprod wskazuje `dev`, ma plan Free i `autoDeployTrigger: checksPass`.
   Używa bazy `sklepzdoniczkami_preprod` na znanym branchu `preprod`, z
   oddzielną rolą runtime; job migracyjny z `.github/workflows/ci.yml` na
@@ -322,6 +333,11 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   `django_migrations`, a branch `prod` był pusty przy ostatniej weryfikacji.
   Nie zmieniać ani nie usuwać baz, dopóki źródło danych produkcyjnych i
   możliwość odtworzenia nie zostaną potwierdzone.
+- Produkcyjny workflow migracyjny jest dostępny na `main`, ale nie był
+  uruchamiany. Wymaga jawnego hosta Neon jako `EXPECTED_DATABASE_HOST_PRODUCTION`,
+  roli migracyjnej, sekretów backupu oraz potwierdzenia odtworzenia. Pustą
+  bazę dopuszcza wyłącznie jako jawny bootstrap bez istniejących tabel;
+  inne niejednoznaczne stany odrzuca.
 - Produkcja nadal jest na Render Free i nie ma trwałego storage mediów.
   Płatny plan i object storage wymagają decyzji budżetowej oraz migracji
   zweryfikowanych plików.
