@@ -22,8 +22,10 @@ env:
 
 jobs:
   test:
-    name: Django tests (Neon dev)
+    name: Django tests
     runs-on: ubuntu-24.04
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci-pr' || 'development' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -38,9 +40,10 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Verify Neon dev read-only connection
+        if: github.event_name != 'pull_request'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_RO }}
-          EXPECTED_DATABASE_NAME: ${{ secrets.DATABASE_NAME_DEVELOPMENT }}
+          EXPECTED_DATABASE_NAME: sklepzdoniczkami_dev
         run: |
           python - <<'PY'
           import os
@@ -75,20 +78,30 @@ jobs:
         run: python manage.py check
 
       - name: Check for missing migrations
+        if: github.event_name != 'pull_request'
         env:
           DATABASE_URL_DEVELOPMENT: ${{ secrets.DATABASE_URL_DEVELOPMENT }}
-          DATABASE_NAME_DEVELOPMENT: ${{ secrets.DATABASE_NAME_DEVELOPMENT }}
+          DATABASE_NAME_DEVELOPMENT: sklepzdoniczkami_dev
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Check migrations for pull requests
+        if: github.event_name == 'pull_request'
         run: python manage.py makemigrations --check --dry-run
 
       - name: Run tests
+        if: github.event_name != 'pull_request'
         env:
           DATABASE_URL_DEVELOPMENT: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
-          DATABASE_NAME_DEVELOPMENT: ${{ secrets.DATABASE_NAME_DEVELOPMENT }}
+          DATABASE_NAME_DEVELOPMENT: sklepzdoniczkami_dev
           DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
         run: pytest -q --ds=config.settings
 
+      - name: Run tests for pull requests
+        if: github.event_name == 'pull_request'
+        run: pytest -q --ds=config.settings_test
+
       - name: Remove any remaining Neon test database
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
           DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
@@ -97,6 +110,8 @@ jobs:
   e2e:
     name: End-to-end tests (Playwright)
     runs-on: ubuntu-24.04
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci-pr' || 'development' }}
     needs: test
     steps:
       - uses: actions/checkout@v7
@@ -115,16 +130,22 @@ jobs:
         run: playwright install --with-deps chromium
 
       - name: Configure environment for e2e
+        if: github.event_name != 'pull_request'
         run: |
           echo "DATABASE_URL_DEVELOPMENT=${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}" >> $GITHUB_ENV
-          echo "DATABASE_NAME_DEVELOPMENT=${{ secrets.DATABASE_NAME_DEVELOPMENT }}" >> $GITHUB_ENV
+          echo "DATABASE_NAME_DEVELOPMENT=sklepzdoniczkami_dev" >> $GITHUB_ENV
           echo "DJANGO_TEST_DATABASE_NAME=test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}" >> $GITHUB_ENV
 
-      - name: Run end-to-end tests
+      - name: Run end-to-end tests on Neon
+        if: github.event_name != 'pull_request'
         run: pytest e2e -m e2e --browser chromium --ds=config.settings
 
+      - name: Run end-to-end tests for pull requests
+        if: github.event_name == 'pull_request'
+        run: pytest e2e -m e2e --browser chromium --ds=config.settings_test
+
       - name: Remove any remaining Neon e2e test database
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_DEVELOPMENT_TEST }}
           DJANGO_TEST_DATABASE_NAME: test_sklepzdoniczkami_dev_${{ github.run_id }}_${{ github.run_attempt }}
