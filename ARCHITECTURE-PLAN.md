@@ -56,8 +56,10 @@ odtworzeniu.
 
 Nie należy tworzyć kolejnej trwałej bazy tylko na potrzeby każdego testu:
 CI ma używać izolowanej, tymczasowej bazy i ją usuwać. Dane produkcyjne nie
-powinny być kopiowane do preprod. Próby odtwarzania backupu wykonuj na
-krótkotrwałym, odizolowanym branchu testowym, a następnie go usuń.
+powinny być kopiowane do preprod. Podstawową próbę odtworzenia backupu wykonuj
+w efemerycznym, odizolowanym PostgreSQL (np. tymczasowym kontenerze). Osobny,
+krótkotrwały branch Neon jest potrzebny tylko wtedy, gdy test ma weryfikować
+zachowanie specyficzne dla Neona; taki branch należy usunąć po próbie.
 
 ### PostgreSQL, Docker i MongoDB
 
@@ -254,7 +256,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    domenach i stronie logowania administratora.
 5. **Częściowo ukończone:** zaszyfrowany backup przed migracją oraz ręczny
    backup po migracji zakończyły się powodzeniem. Pozostaje regularnie
-   odtwarzać kopie na izolowanym branchu i weryfikować dane oraz media.
+   odtwarzać kopie w efemerycznym PostgreSQL przez
+   `.github/workflows/database-restore-test.yml` i weryfikować dane oraz media;
+   branch Neon stosować tylko do testów specyficznych dla Neona.
 6. **Oczekuje:** zdecydować, czy przenieść `prod` z child brancha na root
    branch, aby uzyskać Neon PITR, czy zaakceptować ochronę wyłącznie przez
    niezależne backupy. Historyczne zamówienia SQLite nie były przenoszone,
