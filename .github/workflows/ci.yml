@@ -160,10 +160,15 @@ jobs:
       - name: Set ephemeral Django key
         run: python -c "import secrets; print('DJANGO_SECRET_KEY_PREPROD=' + secrets.token_urlsafe(48))" >> "$GITHUB_ENV"
 
-      - name: Apply preprod migrations
+      - name: Validate preprod migration target
         run: |
           if [ -z "$DATABASE_URL_PREPROD" ]; then
             echo "DATABASE_URL_PREPROD_MIGRATE is required in the preprod environment" >&2
             exit 1
           fi
-          python manage.py migrate --noinput
+
+      - name: Rename legacy Django app metadata
+        run: python manage.py rename_shop_label
+
+      - name: Apply preprod migrations
+        run: python manage.py migrate --noinput
