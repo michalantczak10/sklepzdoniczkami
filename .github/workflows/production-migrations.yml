@@ -130,10 +130,22 @@ jobs:
                   )
                   has_migration_history = cursor.fetchone()[0]
                   cursor.execute(
-                      "SELECT count(*) FROM information_schema.tables "
-                      "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+                      "SELECT count(*) FROM pg_catalog.pg_class AS relation "
+                      "JOIN pg_catalog.pg_namespace AS namespace "
+                      "ON namespace.oid = relation.relnamespace "
+                      "WHERE namespace.nspname = 'public' "
+                      "AND relation.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')"
                   )
-                  public_table_count = cursor.fetchone()[0]
+                  public_relation_count = cursor.fetchone()[0]
+                  cursor.execute(
+                      "SELECT count(*) FROM pg_catalog.pg_class AS relation "
+                      "JOIN pg_catalog.pg_namespace AS namespace "
+                      "ON namespace.oid = relation.relnamespace "
+                      "WHERE namespace.nspname = 'public' "
+                      "AND relation.relkind IN ('r', 'p', 'S', 'v', 'm', 'f') "
+                      "AND pg_catalog.pg_get_userbyid(relation.relowner) <> current_user"
+                  )
+                  unowned_public_relation_count = cursor.fetchone()[0]
                   if has_migration_history:
                       cursor.execute("SELECT count(*) FROM public.django_migrations")
                       migration_count = cursor.fetchone()[0]
@@ -162,9 +174,13 @@ jobs:
               raise SystemExit(
                   "Existing production target must have applied migration history"
               )
-          if target_state == "verified-empty-bootstrap" and public_table_count != 0:
+          if target_state == "existing-production" and unowned_public_relation_count != 0:
               raise SystemExit(
-                  "Empty bootstrap target must not contain public database tables"
+                  "Migration role must own all public tables, sequences, and views"
+              )
+          if target_state == "verified-empty-bootstrap" and public_relation_count != 0:
+              raise SystemExit(
+                  "Empty bootstrap target must not contain public database objects"
               )
           if target_state not in {"existing-production", "verified-empty-bootstrap"}:
               raise SystemExit("Production target state must be explicitly selected")

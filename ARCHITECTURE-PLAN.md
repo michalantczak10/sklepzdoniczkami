@@ -163,6 +163,8 @@ Docelowo:
   `DATABASE_URL_PRODUCTION_MIGRATE`, `PRODUCTION_DATABASE_HOST` i
   sekretów szyfrujących. Limited role URLs są zapisane w GitHub Environment
   `production`; workflow dodatkowo odrzuca role z nadmiernymi uprawnieniami.
+  Dla istniejącej bazy wymaga, by migrator był właścicielem publicznych
+  obiektów; dla pustego bootstrapu wymaga braku takich obiektów.
   Nie był uruchamiany; nie wykonywać migracji ani
   deployu production przed potwierdzeniem źródła danych i odtworzenia backupu.
 - Dodawać testy migracji i plan rollbacku dla zmian schematu; migracje muszą
