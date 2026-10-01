@@ -19,6 +19,7 @@ from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
 from config.settings import resolve_app_env, validate_stripe_configuration
+from .management.commands.bootstrap_first_admin import Command as BootstrapFirstAdminCommand
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -74,14 +75,15 @@ class FirstAdminBootstrapCommandTests(TestCase):
         password = "Quartz-Birch-83-Riverstone!"
         output = StringIO()
         with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": password}):
-            call_command(
-                "bootstrap_first_admin",
-                username="store-admin",
-                email="owner@example.com",
-                confirm_production_database="sklepzdoniczkami_prod",
-                stdout=output,
-                verbosity=0,
-            )
+            with patch.object(BootstrapFirstAdminCommand, "validate_production_database"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                    stdout=output,
+                    verbosity=0,
+                )
 
         user = User.objects.get(username="store-admin")
         self.assertTrue(user.is_staff)
@@ -110,13 +112,14 @@ class FirstAdminBootstrapCommandTests(TestCase):
             password="Quartz-Birch-83-Riverstone!",
         )
         with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
-            with self.assertRaisesMessage(CommandError, "already exists"):
-                call_command(
-                    "bootstrap_first_admin",
-                    username="store-admin",
-                    email="owner@example.com",
-                    confirm_production_database="sklepzdoniczkami_prod",
-                )
+            with patch.object(BootstrapFirstAdminCommand, "validate_production_database"):
+                with self.assertRaisesMessage(CommandError, "already exists"):
+                    call_command(
+                        "bootstrap_first_admin",
+                        username="store-admin",
+                        email="owner@example.com",
+                        confirm_production_database="sklepzdoniczkami_prod",
+                    )
 
         self.assertEqual(User.objects.filter(is_superuser=True).count(), 1)
 
@@ -170,6 +173,27 @@ class FirstAdminBootstrapCommandTests(TestCase):
                 call_command(
                     "bootstrap_first_admin",
                     username="  ",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_database_target(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
                     email="owner@example.com",
                     confirm_production_database="sklepzdoniczkami_prod",
                 )

@@ -7,7 +7,7 @@ from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
-from django.db import transaction
+from django.db import connections, transaction
 
 
 class Command(BaseCommand):
@@ -17,6 +17,32 @@ class Command(BaseCommand):
         parser.add_argument("--username", required=True)
         parser.add_argument("--email", required=True)
         parser.add_argument("--confirm-production-database", required=True)
+
+    def validate_production_database(self):
+        database = connections["default"]
+        database_settings = database.settings_dict
+        expected_host = os.environ.get("PRODUCTION_DATABASE_HOST", "").strip()
+        if (
+            database_settings["ENGINE"] != "django.db.backends.postgresql"
+            or database_settings["NAME"] != "sklepzdoniczkami_prod"
+            or database_settings["USER"] != "sklepzdoniczkami_prod_web_limited"
+            or not expected_host
+            or database_settings["HOST"].lower() != expected_host.lower()
+        ):
+            raise CommandError(
+                "Refusing to create an administrator outside the pinned production database."
+            )
+
+        with database.cursor() as cursor:
+            cursor.execute("SELECT current_database(), current_user")
+            actual_database, actual_user = cursor.fetchone()
+        if (
+            actual_database != "sklepzdoniczkami_prod"
+            or actual_user != "sklepzdoniczkami_prod_web_limited"
+        ):
+            raise CommandError(
+                "The active database connection does not match the production target."
+            )
 
     def handle(self, *args, **options):
         if settings.APP_ENV != "production":
@@ -45,6 +71,8 @@ class Command(BaseCommand):
             raise CommandError(
                 "Administrator details or password did not pass validation."
             ) from exc
+
+        self.validate_production_database()
 
         with transaction.atomic():
             if User.objects.filter(is_superuser=True).exists():
