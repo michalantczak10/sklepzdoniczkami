@@ -155,7 +155,7 @@ jobs:
               public_table_count="$(psql --host=db --username=postgres --dbname=restore_test --tuples-only --no-align \
                 --command="SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_type = '\''BASE TABLE'\''")"
               app_table_count="$(psql --host=db --username=postgres --dbname=restore_test --tuples-only --no-align \
-                --command="SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_name IN ('\''sklepzdoniczkami_category'\'', '\''sklepzdoniczkami_product'\'', '\''sklepzdoniczkami_order'\'', '\''sklepzdoniczkami_orderitem'\'')")"
+                --command="SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_type = '\''BASE TABLE'\'' AND table_name IN ('\''sklepzdoniczkami_category'\'', '\''sklepzdoniczkami_product'\'', '\''sklepzdoniczkami_order'\'', '\''sklepzdoniczkami_orderitem'\'')")"
               order_count="$(psql --host=db --username=postgres --dbname=restore_test --tuples-only --no-align \
                 --command="SELECT CASE WHEN to_regclass('\''public.sklepzdoniczkami_order'\'') IS NULL THEN -1 ELSE (SELECT count(*) FROM public.sklepzdoniczkami_order) END")"
               case "$migration_count" in ""|*[!0-9]*) exit 1 ;; esac
