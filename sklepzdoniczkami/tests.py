@@ -2,7 +2,7 @@ from io import StringIO
 from importlib import import_module
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import stripe
 from django.apps import apps
@@ -229,6 +229,63 @@ class FirstAdminBootstrapCommandTests(TestCase):
                 )
 
         self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_database_url_with_search_path_override(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {"options": "-c search_path=other_schema"},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_active_schema(self):
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "OPTIONS": {},
+        }
+        cursor = database.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
+            "unexpected_schema",
+        )
+
+        with patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "expected.neon.tech"}):
+            with patch(
+                "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+            ) as connection_handler:
+                connection_handler.__getitem__.return_value = database
+                with self.assertRaisesMessage(
+                    CommandError, "does not match the production target"
+                ):
+                    BootstrapFirstAdminCommand().validate_production_database()
 
 
 class SampleProductCommandTests(TestCase):

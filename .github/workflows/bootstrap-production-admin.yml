@@ -100,13 +100,18 @@ jobs:
           import psycopg2
 
           routing_options = {
+              "database",
+              "dbname",
               "host",
               "hostaddr",
+              "options",
               "port",
+              "password",
               "service",
               "servicefile",
               "target_session_attrs",
               "load_balance_hosts",
+              "user",
           }
           database_url = urlparse(os.environ["DATABASE_URL_PRODUCTION"])
           if database_url.scheme not in {"postgres", "postgresql"}:
@@ -134,7 +139,7 @@ jobs:
           ) as connection:
               with connection.cursor() as cursor:
                   cursor.execute(
-                      "SELECT current_database(), current_user, "
+                      "SELECT current_database(), current_user, current_schema(), "
                       "rolcreatedb, rolcreaterole, rolsuper, rolreplication, "
                       "pg_has_role(current_user, 'neon_superuser', 'MEMBER'), "
                       "has_schema_privilege(current_user, 'public', 'CREATE'), "
@@ -151,6 +156,7 @@ jobs:
           (
               database_name,
               database_user,
+              current_schema,
               can_create_databases,
               can_create_roles,
               is_superuser,
@@ -166,6 +172,8 @@ jobs:
               raise SystemExit("Connected to an unexpected production database.")
           if database_user != "sklepzdoniczkami_prod_web_limited":
               raise SystemExit("Connected with an unexpected production database role.")
+          if current_schema != "public":
+              raise SystemExit("Production administrator bootstrap requires the public schema.")
           if any(
               (
                   can_create_databases,

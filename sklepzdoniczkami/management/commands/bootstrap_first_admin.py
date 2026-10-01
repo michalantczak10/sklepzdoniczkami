@@ -11,13 +11,18 @@ from django.db import connections, transaction
 
 
 ROUTING_OPTIONS = {
+    "database",
+    "dbname",
     "host",
     "hostaddr",
+    "options",
     "port",
+    "password",
     "service",
     "servicefile",
     "target_session_attrs",
     "load_balance_hosts",
+    "user",
 }
 
 
@@ -50,11 +55,14 @@ class Command(BaseCommand):
             )
 
         with database.cursor() as cursor:
-            cursor.execute("SELECT current_database(), current_user")
-            actual_database, actual_user = cursor.fetchone()
+            cursor.execute(
+                "SELECT current_database(), current_user, current_schema()"
+            )
+            actual_database, actual_user, actual_schema = cursor.fetchone()
         if (
             actual_database != "sklepzdoniczkami_prod"
             or actual_user != "sklepzdoniczkami_prod_web_limited"
+            or actual_schema != "public"
         ):
             raise CommandError(
                 "The active database connection does not match the production target."
