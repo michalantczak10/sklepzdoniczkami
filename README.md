@@ -3,6 +3,11 @@
 Sklep internetowy oparty na Django: katalog produktów, koszyk, zamówienia,
 płatności Stripe, konta klientów i panel administratora.
 
+## Architektura projektu
+
+Decyzje dotyczące baz danych, branchy, wdrożeń, CI i review opisuje
+[plan architektury](ARCHITECTURE-PLAN.md).
+
 ## Uruchomienie lokalne
 
 Wymagany jest Python 3.11 lub nowszy.
