@@ -16,10 +16,13 @@ docker compose up -d db
 ```
 
 `docker compose up -d db` uruchamia lokalny PostgreSQL dla developmentu,
-dostępny z hosta na porcie `5434`; `.env.example` zawiera zgodny URL i lokalne
-poświadczenia przykładowej bazy. Kontener aplikacji łączy się z bazą przez
-wewnętrzny adres Docker `db:5432`. Uzupełnij `.env` zmiennymi z sufiksem
-`_DEVELOPMENT`, a następnie uruchom:
+dostępny wyłącznie z tego komputera pod `127.0.0.1:5434`. `.env.example`
+zawiera zgodny `DATABASE_URL_DEVELOPMENT` i lokalne hasło przykładowej bazy.
+Jeśli wcześniej utworzono `.env`, skopiuj do niego te dwie wartości ręcznie,
+nie nadpisując pozostałych sekretów i ustawień. Przy zmianie hasła PostgreSQL
+zaktualizuj również hasło w URL-u; nie używaj tego lokalnego hasła w innych
+środowiskach. Następnie uzupełnij `.env` zmiennymi z sufiksem
+`_DEVELOPMENT` i uruchom aplikację Django na hoście:
 
 ```powershell
 python manage.py migrate
@@ -28,12 +31,12 @@ python manage.py runserver
 ```
 
 Konfigurację Compose można sprawdzić bez uruchamiania kontenerów poleceniem
-`docker compose config --quiet`. W CI walidacja uruchamia się automatycznie.
+`docker compose config --quiet`. CI wykonuje tę walidację automatycznie.
 
 Sklep będzie dostępny pod `http://127.0.0.1:8000/`, a panel administratora pod
-`http://127.0.0.1:8000/admin/`. Domyślnie aplikacja używa SQLite; PostgreSQL
-można skonfigurować przez `DATABASE_URL_DEVELOPMENT`. Klucze testowe Stripe
-pochodzą z panelu Stripe i nie należy ich commitować.
+`http://127.0.0.1:8000/admin/`. Jeśli `DATABASE_URL_DEVELOPMENT` nie jest
+ustawione, Django użyje SQLite. Klucze testowe Stripe pochodzą z panelu Stripe
+i nie należy ich commitować.
 
 ## Testy
 
