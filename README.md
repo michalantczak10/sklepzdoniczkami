@@ -73,6 +73,34 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
   job sprząta ją również po nieudanym teście.
 - `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
   Artefakty są przechowywane przez 90 dni.
+- `bootstrap-production-admin.yml` pozwala jednorazowo utworzyć pierwszego
+  administratora produkcji. Read-only preflight można uruchomić z `main`;
+  tworzenie konta wymaga tymczasowego sekretu w GitHub Environment `production`.
+
+## Pierwszy administrator produkcji
+
+Nie wpisuj hasła administratora w polu wejściowym workflow, issue ani czacie.
+Preflight można uruchomić przed ustawieniem hasła, bez nazwy użytkownika i
+adresu e-mail. Zapisz mocne, unikalne hasło w menedżerze haseł, a następnie:
+
+1. Opcjonalnie uruchom workflow w trybie `preflight-only`; sprawdzi
+   połączenie z właściwą bazą i uprawnienia bez tworzenia ani zmiany danych.
+2. Gdy będziesz gotowy do utworzenia konta, w GitHub otwórz
+   `Settings` → `Environments` → `production` i dodaj sekret
+   `INITIAL_ADMIN_PASSWORD` (co najmniej 16 znaków).
+3. W `Actions` uruchom `Bootstrap first production administrator` z brancha
+   `main`, wybierz tryb `create-first-admin`, podaj nazwę użytkownika i e-mail
+   oraz wybierz potwierdzenie `create-first-admin`.
+4. Po udanym runie usuń sekret `INITIAL_ADMIN_PASSWORD` ze środowiska GitHub.
+   Hasło zachowaj w menedżerze haseł.
+
+Workflow sprawdza przypięty host, bazę `sklepzdoniczkami_prod` i ograniczoną
+rolę runtime, używając istniejącego sekretu `DATABASE_URL_PRODUCTION_WEB`
+w GitHub Environment `production`; nie kopiuj URL-a bazy do lokalnego `.env`
+ani do pola wejściowego workflow. Odmówi działania poza produkcją, gdy istnieje
+już superuser, gdy hasło jest słabe albo dane logowania nie przechodzą
+walidacji. Nie zmienia konfiguracji Stripe ani Rendera i nie uruchamia
+płatności.
 
 ## Oddzielne środowiska i bazy danych
 

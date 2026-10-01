@@ -1,12 +1,14 @@
+from io import StringIO
 from importlib import import_module
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import stripe
 from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
@@ -17,6 +19,7 @@ from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
 from config.settings import resolve_app_env, validate_stripe_configuration
+from .management.commands.bootstrap_first_admin import Command as BootstrapFirstAdminCommand
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -64,6 +67,255 @@ class PreprodSeedCommandTests(TestCase):
         self.assertTrue(
             Product.objects.filter(slug="preprod-monstera-deliciosa").exists()
         )
+
+
+class FirstAdminBootstrapCommandTests(TestCase):
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_creates_first_superuser_without_printing_password(self):
+        password = "Quartz-Birch-83-Riverstone!"
+        output = StringIO()
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": password}):
+            with patch.object(BootstrapFirstAdminCommand, "validate_production_database"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                    stdout=output,
+                    verbosity=0,
+                )
+
+        user = User.objects.get(username="store-admin")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password(password))
+        self.assertNotIn(password, output.getvalue())
+
+    @override_settings(APP_ENV="development")
+    def test_bootstrap_refuses_nonproduction_environment(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "APP_ENV=production"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_a_second_superuser(self):
+        User.objects.create_superuser(
+            username="existing-admin",
+            email="existing@example.com",
+            password="Quartz-Birch-83-Riverstone!",
+        )
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with patch.object(BootstrapFirstAdminCommand, "validate_production_database"):
+                with self.assertRaisesMessage(CommandError, "already exists"):
+                    call_command(
+                        "bootstrap_first_admin",
+                        username="store-admin",
+                        email="owner@example.com",
+                        confirm_production_database="sklepzdoniczkami_prod",
+                    )
+
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 1)
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_weak_password(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "password123"}):
+            with self.assertRaisesMessage(CommandError, "at least 16 characters"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_numeric_password_that_meets_length_minimum(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "1234567890123456"}):
+            with self.assertRaisesMessage(
+                CommandError, "did not pass validation"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_invalid_email(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(
+                CommandError, "did not pass validation"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="not-an-email",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_empty_username(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "username must not be empty"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="  ",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_database_target(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_database_url_with_hostaddr_override(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {"hostaddr": "203.0.113.7"},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_database_url_with_search_path_override(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {"options": "-c search_path=other_schema"},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_database_port(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "6543",
+            "OPTIONS": {},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_active_schema(self):
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "OPTIONS": {},
+        }
+        cursor = database.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
+            "unexpected_schema",
+        )
+
+        with patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "expected.neon.tech"}):
+            with patch(
+                "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+            ) as connection_handler:
+                connection_handler.__getitem__.return_value = database
+                with self.assertRaisesMessage(
+                    CommandError, "does not match the production target"
+                ):
+                    BootstrapFirstAdminCommand().validate_production_database()
 
 
 class SampleProductCommandTests(TestCase):

@@ -347,6 +347,11 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   administratora. Przed uruchomieniem sprzedaży należy utworzyć konto admina
   i wprowadzić zweryfikowany katalog; nie używać produktów demonstracyjnych
   z migracji jako oferty produkcyjnej.
+- Przygotowano chroniony workflow `.github/workflows/bootstrap-production-admin.yml`
+  i komendę `bootstrap_first_admin` do utworzenia pierwszego superusera
+  z ograniczonej roli runtime. Workflow nie został jeszcze uruchomiony:
+  wymaga tymczasowego sekretu `INITIAL_ADMIN_PASSWORD` ustawionego przez
+  właściciela w GitHub Environment `production`.
 - Produkcja nadal jest na Render Free i nie ma trwałego storage mediów.
   Płatny plan i object storage wymagają decyzji budżetowej oraz migracji
   zweryfikowanych plików.
