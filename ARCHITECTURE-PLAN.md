@@ -337,6 +337,12 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   PostgreSQL 18; nie łączy się z Neonem i nie zmienia produkcji. Odtworzenie
   backupu z runu `36862495568` przeszło pomyślnie po scaleniu workflow:
   [run 36878035101](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36878035101).
+- Produkcyjny webhook Stripe działa pod
+  `https://sklepzdoniczkami.onrender.com/stripe/webhook/`. Endpoint jest aktywny
+  i subskrybuje `checkout.session.completed` oraz `checkout.session.expired`.
+  Wykonano bezpłatny test poprawności podpisu przez wysłanie syntetycznego,
+  niepłatniczego zdarzenia; aplikacja odpowiedziała HTTP 200. Nie wykonywano
+  transakcji ani nie ujawniano sekretu webhooka.
 - Nowa baza nie zawiera aktywnego katalogu sprzedażowego ani użytkownika
   administratora. Przed uruchomieniem sprzedaży należy utworzyć konto admina
   i wprowadzić zweryfikowany katalog; nie używać produktów demonstracyjnych
