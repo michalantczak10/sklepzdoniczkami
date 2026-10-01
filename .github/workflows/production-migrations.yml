@@ -1,0 +1,139 @@
+name: Production database migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_restore_verified:
+        description: Confirm that a production backup was restored and verified separately
+        required: true
+        type: choice
+        options:
+          - not-verified
+          - verified
+        default: not-verified
+      confirm_migration:
+        description: Confirm the production migration
+        required: true
+        type: choice
+        options:
+          - do-not-run
+          - migrate-production
+        default: do-not-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-migrations
+  cancel-in-progress: false
+
+jobs:
+  production-migrations:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.backup_restore_verified == 'verified' &&
+      inputs.confirm_migration == 'migrate-production'
+    name: Back up and migrate production database
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      APP_ENV: production
+      DEBUG: "False"
+      ALLOWED_HOSTS: localhost
+      CSRF_TRUSTED_ORIGINS: https://sklepzdoniczkami.pl,https://sklepzdoniczkami.onrender.com
+      SITE_NAME: Sklepzdoniczkami
+      DATABASE_NAME_PRODUCTION: sklepzdoniczkami_prod
+      DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_MIGRATE }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set ephemeral Django key
+        run: python -c "import secrets; print('DJANGO_SECRET_KEY_PRODUCTION=' + secrets.token_urlsafe(48))" >> "$GITHUB_ENV"
+
+      - name: Validate production migration target
+        run: |
+          if [ -z "$DATABASE_URL_PRODUCTION" ]; then
+            echo "DATABASE_URL_PRODUCTION_MIGRATE is required in the production environment" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from urllib.parse import unquote, urlparse
+
+          database_url = urlparse(os.environ["DATABASE_URL_PRODUCTION"])
+          if database_url.scheme not in {"postgres", "postgresql"}:
+              raise SystemExit("Production migration target must use PostgreSQL")
+          if database_url.path.lstrip("/").split("?")[0] != "sklepzdoniczkami_prod":
+              raise SystemExit("Production migration target must be sklepzdoniczkami_prod")
+          if "migrat" not in unquote(database_url.username or "").lower():
+              raise SystemExit("Production migration target must use a migration role")
+          PY
+
+      - name: Back up and encrypt the migration target
+        run: |
+          set -euo pipefail
+          for name in BACKUP_ENCRYPTION_KEY BACKUP_HMAC_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "$name secret is required before production migrations" >&2
+              exit 1
+            fi
+          done
+
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env DATABASE_URL_PRODUCTION \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work \
+            postgres:18 sh -euc \
+            'pg_dump --dbname="$DATABASE_URL_PRODUCTION" --format=custom --file=production-before-migration.dump'
+
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in production-before-migration.dump \
+            -out production-before-migration.dump.enc \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          key_hex=$(printf '%s' "$BACKUP_HMAC_KEY" | base64 -d | xxd -p -c 256)
+          openssl dgst -sha256 -mac HMAC -macopt "hexkey:$key_hex" \
+            -binary production-before-migration.dump.enc |
+            xxd -p -c 256 > production-before-migration.dump.enc.hmac
+          printf '%s' "$BACKUP_HMAC_KEY" | base64 -d |
+            openssl dgst -sha256 -hex | awk '{print substr($2, 1, 8)}' \
+            > production-before-migration.hmac.keyid
+
+          tar czf "production-before-migration-${GITHUB_RUN_ID}.tgz" \
+            production-before-migration.dump.enc \
+            production-before-migration.dump.enc.hmac \
+            production-before-migration.hmac.keyid
+
+      - name: Upload encrypted pre-migration backup
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-before-migration-${{ github.run_id }}.tgz
+          path: production-before-migration-${{ github.run_id }}.tgz
+          retention-days: 90
+
+      - name: Rename legacy Django app metadata
+        run: python manage.py rename_shop_label
+
+      - name: Apply production migrations
+        run: python manage.py migrate --noinput
+
+      - name: Remove temporary backup files
+        if: always()
+        run: |
+          shred -u production-before-migration.dump 2>/dev/null || rm -f production-before-migration.dump
+          rm -f production-before-migration.dump.enc production-before-migration.dump.enc.hmac
+          rm -f production-before-migration.hmac.keyid
+          rm -f "production-before-migration-${GITHUB_RUN_ID}.tgz"
