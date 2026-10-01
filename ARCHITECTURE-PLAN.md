@@ -164,40 +164,38 @@ Docelowo:
   sekretów szyfrujących. Limited role URLs są zapisane w GitHub Environment
   `production`; workflow dodatkowo odrzuca role z nadmiernymi uprawnieniami.
   Dla istniejącej bazy wymaga, by migrator był właścicielem publicznych
-  obiektów; dla pustego bootstrapu wymaga braku takich obiektów.
-  Nie był uruchamiany; nie wykonywać migracji ani
-  deployu production przed potwierdzeniem źródła danych i odtworzenia backupu.
+  obiektów oraz oddzielnie zweryfikowanego odtworzenia backupu. Pusty bootstrap
+  wymaga braku obiektów publicznych i jawnego potwierdzenia, że legacy SQLite
+  jest celowo odrzucane. Ścieżka pustego bootstrapu została wykonana 2026-10-01
+  w [runie 36860541866](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36860541866).
+  Przed kolejnymi zmianami produkcyjnymi nadal wymagane są zaszyfrowane backupy
+  i okresowe próby odtworzenia; nie używać pustego bootstrapu do istniejącej
+  bazy ani gdy stare dane mają zostać zachowane.
 - Dodawać testy migracji i plan rollbacku dla zmian schematu; migracje muszą
   być kompatybilne z wersją aplikacji działającą równolegle podczas deployu.
 
 ## Hosting, pliki i operacje
 
-Na razie pozostać przy Renderze i Neon. Live preprod jest teraz skierowany na
-branch `dev`, korzysta z ograniczonej roli runtime i przeszedł sprawdzenie
-HTTP oraz syntetycznego katalogu. Produkcja nadal wskazuje `main`, ale jej
-auto-deploy jest wyłączony zarówno w Renderze, jak i w aktualnym `render.yaml`
-na branchu `main`.
+Na razie pozostać przy Renderze i Neon. Live preprod jest skierowany na branch
+`dev`, korzysta z ograniczonej roli runtime i przeszedł sprawdzenie HTTP oraz
+syntetycznego katalogu. Produkcja wskazuje `main`, ma wyłączony auto-deploy i
+od 2026-10-01 korzysta z Neon `prod` przez ograniczoną rolę runtime. Wdrożony
+commit `735d256b034e98410e7555c7ab1f76d35e0cafbf` odpowiada HTTP 200 na domenie
+Render, domenie sklepu i stronie logowania administratora.
 
-**Warunek wejścia w realną produkcję:** obecny Render `free` nie jest
-akceptowalny dla sklepu przyjmującego prawdziwe zamówienia. Render wprost
-odradza plan Free do produkcji; usypia usługę po bezczynności, a jej wznowienie
-może trwać około minuty. Przed uruchomieniem lub dalszą obsługą realnych
-zamówień trzeba najpierw skonfigurować i zweryfikować trwałą bazę PostgreSQL,
-backup i próbę odtworzenia. SQLite używane przy braku poprawnego URL-a jest
-plikiem w efemerycznym filesystemie Render i nie zapewnia trwałości zamówień.
-Następnie należy przenieść usługę produkcyjną na płatny plan Render albo
-wybrać inny hosting o wymaganej dostępności. Obecny `render.yaml` nadal
-deklaruje `plan: free` dla produkcji; przed synchronizacją Blueprintu dla live
-trzeba jawnie zmienić plan usługi na wybrany płatny wariant. Nie ustawiam
-konkretnego płatnego planu w tym dokumencie ani nie zmieniam go automatycznie,
-bo wymaga to decyzji budżetowej. Sam płatny workspace nie zmienia planu
-instancji — trzeba zmienić plan usługi.
+**Pozostałe warunki stabilnej produkcji:** baza PostgreSQL Neon jest już
+skonfigurowana, a fallback do SQLite został usunięty z bieżącej konfiguracji
+Rendera. Usługa nadal działa jednak na planie `free`, który usypia aplikację po
+bezczynności, a jej wznowienie może trwać około minuty. Plan Free nie jest
+zalecany do sklepu przyjmującego prawdziwe zamówienia. `render.yaml` nadal
+deklaruje `plan: free`; przed synchronizacją Blueprintu dla live trzeba wybrać
+i ustawić płatny plan albo inny hosting. Nie zmieniam planu automatycznie,
+ponieważ wymaga to decyzji budżetowej.
 
 Filesystem usług Render jest efemeryczny; pliki z `MEDIA_ROOT` mogą zniknąć
-przy redeployu, restarcie albo uśpieniu usługi Free. Przed poleganiem na
-obrazach produktów przechowywanych w aplikacyjnym `media/` przenieść je do
-object storage (np. S3/R2). To zalecana opcja, bo nie jest związana z
-lifecycle web service i pozwala skalować aplikację poziomo.
+przy redeployu, restarcie albo uśpieniu usługi Free. Przed dodaniem
+produkcyjnych zdjęć przenieść media do object storage (np. S3/R2), niezależnego
+od lifecycle web service.
 
 Persistent disk na płatnej instancji może być rozwiązaniem przejściowym, ale
 Render nie pozwala wtedy na zero-downtime deploye ani skalowanie usługi do
@@ -211,12 +209,12 @@ Render wdraża domyślnie po pushu do podpiętego brancha:
 [automatyczne deploye](https://render.com/docs/deploys).
 
 Backup powinien być niezależny od aplikacji, szyfrowany i regularnie
-odtwarzany testowo. Aktualny workflow odrzuca pustą lub błędnie wskazaną bazę,
-co jest bezpieczne, ale nie dowodzi jeszcze, że istnieje użyteczny backup
-aktywnej produkcji. Aktualny `prod` jest child branchem `dev`, więc nie ma Neon
-PITR. Produkcyjny branch powinien być root branchem, jeśli chcemy polegać na
-PITR; osobny projekt jest zalecany dla izolacji, ale nie jest wymagany przez
-samą funkcję PITR.
+odtwarzany testowo. Zaszyfrowany backup przed migracją i ręczny backup po
+migracji zakończyły się powodzeniem 2026-10-01; artefakty są przechowywane w
+GitHub Actions. Sam udany backup nie zastępuje próby odtworzenia. Aktualny
+`prod` jest child branchem `dev`, więc nie ma Neon PITR. Produkcyjny branch
+powinien być root branchem, jeśli chcemy polegać na PITR; osobny projekt jest
+zalecany dla izolacji, ale nie jest wymagany przez samą funkcję PITR.
 Przy przejściowym układzie z produkcją jako child branchem nie zakładać PITR —
 niezależny, testowany backup jest wtedy wymagany. Sprawdzić okno historii
 konkretnego planu i regularnie testować odtworzenie co najmniej kwartalnie.
@@ -235,10 +233,11 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 
 ### P0 — bezpieczeństwo danych i uruchomienie środowisk
 
-1. **Częściowo ukończone:** live ustawienie Rendera i `render.yaml` mają
-   `autoDeployTrigger: "off"`, a manifest nie uruchamia produkcyjnych
-   migracji podczas builda. Aktywnej komendy builda Render nie zmieniano.
-   Ręczny workflow migracyjny istnieje, ale nie był uruchamiany.
+1. **Ukończone 2026-10-01:** produkcyjny `buildCommand` nie uruchamia migracji,
+   a auto-deploy pozostaje wyłączony. Produkcyjny workflow migracyjny uruchomiono
+   ręcznie na pustej bazie Neon po jawnej zgodzie właściciela na odrzucenie
+   starych zamówień. Walidacja potwierdziła host, ograniczoną rolę i pusty
+   schemat; przed DDL zapisano zaszyfrowany backup.
 2. **Ukończone:** chronić `dev` przed bezpośrednim pushem. Pull requesty nie
    otrzymują sekretów Neon; pushowe joby uruchamiają się w chronionym
    środowisku.
@@ -246,34 +245,25 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    checków oraz blokują force-push/usuwanie. GitHub nie wymaga zatwierdzeń
    (0 approvals); trzy pozytywne review subagentów są procesem, a nie
    egzekwowanym statusem GitHub.
-4. **Bloker production:** usługa Render ma starszą, niesufiksowaną zmienną
-   `DATABASE_URL`, wskazującą bazę `sklepzdoniczkami` i rolę owner. Jej
-   endpoint nie należy do projektu Neon widocznego przez aktualny klucz API.
-   Brakuje `APP_ENV`, `DATABASE_URL_PRODUCTION` i
-   `DJANGO_SECRET_KEY_PRODUCTION`; obecnie wdrożony kod wybiera
-   `APP_ENV=development` i SQLite, bo nie ma `DATABASE_URL_DEVELOPMENT`.
-   Kod po merge'u #46 odrzuca brak jawnego `APP_ENV` na Renderze, więc
-   następny deploy zatrzyma się bezpiecznie, dopóki konfiguracja nie zostanie
-   poprawiona. Produkcja nie została wdrożona ponownie.
-   SQLite znajduje się na efemerycznym filesystemie Render, więc zapisy
-   zamówień mogą zniknąć przy restarcie/redeployu. Jeśli sklep już przyjmuje
-   prawdziwe zamówienia, potraktować to jako pilny incydent trwałości danych.
-   Nie przepinać production na Neon `prod`, nie migrować i nie usuwać starej
-   bazy, dopóki nie zostaną ustalone aktywne dane oraz ich kopia.
-5. **Oczekuje:** po potwierdzeniu źródła production wykonać backup i próbę
-   odtworzenia na izolowanym branchu. Zweryfikować dane biznesowe oraz kopię
-   mediów; obecny workflow backupu sprawdza endpoint i schemat, ale nie
-   potwierdza zawartości produkcyjnej.
-6. **Oczekuje:** przygotować produkcyjny root branch lub jawnie zaakceptować
-   niezależny backup zamiast PITR. Cutover wykonać dopiero po końcowej
-   synchronizacji zapisów i weryfikacji danych docelowych.
-7. **Decyzja budżetowa i blocker danych:** production pozostaje na Render Free,
-   z niezweryfikowanym URL-em i SQLite fallbackiem oraz bez trwałego storage
-   mediów. Przed przyjmowaniem prawdziwych zamówień skonfigurować trwałą bazę
-   PostgreSQL i potwierdzić backup/restore; następnie wybrać płatny plan lub
-   hosting oraz object storage, przenieść media i zweryfikować migrację. Nie
-   zmieniać planu ani źródła danych automatycznie. Jeśli sklep już obsługuje
-   klientów, potraktować to jako pilny incydent dostępności i trwałości danych.
+4. **Ukończone 2026-10-01:** właściciel zaakceptował start bez historycznych
+   zamówień. Render ma jawne `APP_ENV=production`, `DATABASE_URL_PRODUCTION`
+   wskazujący `sklepzdoniczkami_prod` oraz ograniczoną rolę
+   `sklepzdoniczkami_prod_web_limited`. Ustawiono też sufiksowane klucze Stripe,
+   usunięto stare niesufiksowane zmienne i wdrożono commit
+   `735d256b034e98410e7555c7ab1f76d35e0cafbf`. Sprawdzono HTTP 200 na obu
+   domenach i stronie logowania administratora.
+5. **Częściowo ukończone:** zaszyfrowany backup przed migracją oraz ręczny
+   backup po migracji zakończyły się powodzeniem. Pozostaje regularnie
+   odtwarzać kopie na izolowanym branchu i weryfikować dane oraz media.
+6. **Oczekuje:** zdecydować, czy przenieść `prod` z child brancha na root
+   branch, aby uzyskać Neon PITR, czy zaakceptować ochronę wyłącznie przez
+   niezależne backupy. Historyczne zamówienia SQLite nie były przenoszone,
+   zgodnie z decyzją właściciela.
+7. **Decyzja budżetowa i operacyjna:** Render production nadal ma plan Free,
+   a media nie mają trwałego object storage. Przed regularnym przyjmowaniem
+   prawdziwych zamówień wybrać płatny plan/hosting, przenieść zdjęcia do
+   object storage i przetestować odtworzenie backupu. Nie zmieniać planu
+   automatycznie.
 8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
    runtime role bez DDL, a workflow CI na branchu `dev` wykonuje metadata
    rename i migracje rolą migrate przed deployem ([workflow](https://github.com/michalantczak10/sklepzdoniczkami/blob/dev/.github/workflows/ci.yml),
@@ -290,9 +280,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    PostgreSQL GitHub Actions zamiast polegać wyłącznie na SQLite.
 4. **Ukończone:** ujednolicić README i `.env.example` oraz rozróżnić testy PR
    na SQLite od pushowych testów Neon.
-5. **Częściowo ukończone:** preprod ma jedną kontrolowaną ścieżkę migracji;
-   wdrożyć analogiczny, ręcznie zatwierdzany job migracyjny dla production
-   dopiero po potwierdzeniu jej właściwej bazy.
+5. **Ukończone:** preprod i production mają osobne, kontrolowane ścieżki
+   migracji. Produkcyjny workflow wymaga jawnej zgody na porzucenie danych przy
+   pustym bootstrapie albo zweryfikowanego odtworzenia przy istniejącej bazie.
 
 ### P2 — izolacja produkcji i odporność
 
@@ -318,39 +308,31 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   w [workflow branchu `dev`](https://github.com/michalantczak10/sklepzdoniczkami/blob/dev/.github/workflows/ci.yml)
   i zakończył się powodzeniem w [runie wdrażanego commita](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36829814318).
 - Render production wskazuje `main`, ma plan Free i `autoDeployTrigger: off`.
-  Jego niesufiksowany `DATABASE_URL` wskazuje bazę `sklepzdoniczkami` i rolę
-  owner, a endpoint nie należy do widocznego projektu Neon. Brak
-  `APP_ENV`/zmiennych sufiksowanych oznacza, że aktualnie wdrożony kod wybiera
-  development/SQLite z pliku na efemerycznym filesystemie Render. Kod na
-  `main` po merge'u #46 nie pozwala już na taki fallback przy kolejnym
-  uruchomieniu na Renderze; auto-deploy pozostaje wyłączony i produkcji nie
-  wdrażano. Zapisy mogą nie przetrwać restartu/redeployu; nie potwierdzono,
-  czy stary endpoint zawiera dane biznesowe i nie wykonywano tam migracji
-  ani cutoveru.
+  Od 2026-10-01 ma poprawne sufiksowane zmienne production, używa Neon
+  `sklepzdoniczkami_prod` przez ograniczoną rolę runtime i działa na commicie
+  `735d256b034e98410e7555c7ab1f76d35e0cafbf`. Odpowiedzi HTTP 200 sprawdzono
+  dla domeny Render, domeny sklepu i `/admin/login/`. Stare niesufiksowane
+  zmienne zostały usunięte.
 - Render preprod wskazuje `dev`, ma plan Free i `autoDeployTrigger: checksPass`.
   Używa bazy `sklepzdoniczkami_preprod` na znanym branchu `preprod`, z
   oddzielną rolą runtime; job migracyjny z `.github/workflows/ci.yml` na
   branchu `dev` używa sekretu wyłącznie z GitHub Environment `preprod`. Deploy
   i syntetyczny katalog zweryfikowano przez HTTP 200.
-- Workflow backupu nadal nie dowodzi istnienia użytecznych kopii danych
-  produkcyjnych; targetowany `sklepzdoniczkami_prod` zgłaszał brak
-  `django_migrations`, a branch `prod` był pusty przy ostatniej weryfikacji.
-  Nie zmieniać ani nie usuwać baz, dopóki źródło danych produkcyjnych i
-  możliwość odtworzenia nie zostaną potwierdzone.
-- Read-only probe potwierdził, że produkcyjny endpoint Neon i baza
-  `sklepzdoniczkami_prod` są dostępne, ale baza nie ma jeszcze tabel publicznych.
-  Utworzono ograniczone role `_migrate_limited` i `_web_limited`: migrator ma
-  DDL tylko w `public`, aplikacja nie ma CREATE, a domyślne uprawnienia dają jej
-  DML i dostęp do sekwencji. Ich connection stringi są sekretami
-  `DATABASE_URL_PRODUCTION_MIGRATE` i `DATABASE_URL_PRODUCTION_WEB` w
-  GitHub Environment `production`. Starsze role production pozostają
-  niezmienione i nie należy ich używać jako URL-i runtime/migracji.
-- Produkcyjny workflow migracyjny jest dostępny na `main`, ale nie był
-  uruchamiany. Wymaga jawnego hosta Neon jako `PRODUCTION_DATABASE_HOST`,
-  ograniczonej roli migracyjnej, sekretów backupu oraz potwierdzenia
-  odtworzenia. Pustą
-  bazę dopuszcza wyłącznie jako jawny bootstrap bez istniejących tabel;
-  inne niejednoznaczne stany odrzuca.
+- Neon production został uruchomiony z pustego schematu w runie
+  [36860541866](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36860541866).
+  Stare zamówienia SQLite celowo pominięto. Zaszyfrowany backup przed migracją
+  został zapisany jako artefakt Actions.
+- Ograniczone role `_migrate_limited` i `_web_limited` pozostają aktywne:
+  migrator ma DDL tylko w `public`, aplikacja nie ma CREATE, a default
+  privileges dają DML i dostęp do sekwencji. Ich URL-e są w GitHub Environment
+  `production`; starszych ról nie używać jako URL-i runtime/migracji.
+- Ręczny backup po migracji zakończył się powodzeniem w runie
+  [36862495568](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36862495568).
+  Odtworzenie kopii w izolowanym środowisku pozostaje do wykonania.
+- Nowa baza nie zawiera aktywnego katalogu sprzedażowego ani użytkownika
+  administratora. Przed uruchomieniem sprzedaży należy utworzyć konto admina
+  i wprowadzić zweryfikowany katalog; nie używać produktów demonstracyjnych
+  z migracji jako oferty produkcyjnej.
 - Produkcja nadal jest na Render Free i nie ma trwałego storage mediów.
   Płatny plan i object storage wymagają decyzji budżetowej oraz migracji
   zweryfikowanych plików.
