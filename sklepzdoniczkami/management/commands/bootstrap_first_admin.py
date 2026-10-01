@@ -10,6 +10,17 @@ from django.core.validators import validate_email
 from django.db import connections, transaction
 
 
+ROUTING_OPTIONS = {
+    "host",
+    "hostaddr",
+    "port",
+    "service",
+    "servicefile",
+    "target_session_attrs",
+    "load_balance_hosts",
+}
+
+
 class Command(BaseCommand):
     help = "Creates the first production superuser from a protected password secret."
 
@@ -22,12 +33,17 @@ class Command(BaseCommand):
         database = connections["default"]
         database_settings = database.settings_dict
         expected_host = os.environ.get("PRODUCTION_DATABASE_HOST", "").strip()
+        connection_options = {
+            str(option).lower()
+            for option in database_settings.get("OPTIONS", {})
+        }
         if (
             database_settings["ENGINE"] != "django.db.backends.postgresql"
             or database_settings["NAME"] != "sklepzdoniczkami_prod"
             or database_settings["USER"] != "sklepzdoniczkami_prod_web_limited"
             or not expected_host
             or database_settings["HOST"].lower() != expected_host.lower()
+            or connection_options.intersection(ROUTING_OPTIONS)
         ):
             raise CommandError(
                 "Refusing to create an administrator outside the pinned production database."

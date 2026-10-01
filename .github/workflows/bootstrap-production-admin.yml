@@ -95,13 +95,30 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import os
-          from urllib.parse import urlparse
+          from urllib.parse import parse_qsl, urlparse
 
           import psycopg2
 
+          routing_options = {
+              "host",
+              "hostaddr",
+              "port",
+              "service",
+              "servicefile",
+              "target_session_attrs",
+              "load_balance_hosts",
+          }
           database_url = urlparse(os.environ["DATABASE_URL_PRODUCTION"])
           if database_url.scheme not in {"postgres", "postgresql"}:
               raise SystemExit("Production admin bootstrap requires PostgreSQL.")
+          connection_options = {
+              key.lower()
+              for key, _ in parse_qsl(database_url.query, keep_blank_values=True)
+          }
+          if routing_options.intersection(connection_options):
+              raise SystemExit(
+                  "Production database URL must not override the pinned host or routing."
+              )
           if database_url.path.lstrip("/").split("?")[0] != "sklepzdoniczkami_prod":
               raise SystemExit("Admin bootstrap target must be sklepzdoniczkami_prod.")
           expected_host = os.environ["PRODUCTION_DATABASE_HOST"]
@@ -122,6 +139,7 @@ jobs:
                       "pg_has_role(current_user, 'neon_superuser', 'MEMBER'), "
                       "has_schema_privilege(current_user, 'public', 'CREATE'), "
                       "to_regclass('public.auth_user') IS NOT NULL, "
+                      "has_table_privilege(current_user, 'public.auth_user', 'SELECT'), "
                       "has_table_privilege(current_user, 'public.auth_user', 'INSERT'), "
                       "has_sequence_privilege("
                       "current_user, pg_get_serial_sequence('public.auth_user', 'id'), 'USAGE') "
@@ -140,6 +158,7 @@ jobs:
               is_neon_superuser,
               can_create_objects,
               has_user_table,
+              can_select_users,
               can_insert_users,
               can_use_user_sequence,
           ) = row
@@ -158,7 +177,12 @@ jobs:
               )
           ):
               raise SystemExit("Production runtime role has excessive privileges.")
-          if not (has_user_table and can_insert_users and can_use_user_sequence):
+          if not (
+              has_user_table
+              and can_select_users
+              and can_insert_users
+              and can_use_user_sequence
+          ):
               raise SystemExit("Production runtime role cannot create an administrator.")
           PY
 

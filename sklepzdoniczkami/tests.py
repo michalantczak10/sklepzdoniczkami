@@ -200,6 +200,36 @@ class FirstAdminBootstrapCommandTests(TestCase):
 
         self.assertFalse(get_user_model().objects.exists())
 
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_database_url_with_hostaddr_override(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "expected.neon.tech",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {"hostaddr": "203.0.113.7"},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
 
 class SampleProductCommandTests(TestCase):
     def test_sample_products_are_idempotent_and_development_only(self):
