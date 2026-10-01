@@ -264,8 +264,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    klientów, potraktować to jako pilny incydent dostępności i trwałości danych.
 8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
    runtime role bez DDL, a workflow CI na branchu `dev` wykonuje metadata
-   rename i migracje rolą migrate przed deployem. Render wdraża po zielonych checkach;
-   sprawdzono HTTP 200 i syntetyczny katalog.
+   rename i migracje rolą migrate przed deployem ([workflow](https://github.com/michalantczak10/sklepzdoniczkami/blob/dev/.github/workflows/ci.yml),
+   [udany run](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36829814318)).
+   Render wdraża po zielonych checkach; sprawdzono HTTP 200 i syntetyczny katalog.
 
 ### P1 — spójny developer workflow
 
@@ -301,8 +302,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   docelowa separacja projektu production pozostaje rekomendacją.
 - `main` i `dev` wymagają PR-ów, dwóch checków CI, zakazują force-push i
   usuwania; wymagane approvals wynoszą 0. Pull requesty używają `ci-pr` bez
-  sekretów Neon. Push na `dev` wykonuje testy Neon, a chroniony job migracyjny
-  preprod zakończył się powodzeniem dla wdrażanego commita.
+  sekretów Neon. Push na `dev` wykonuje testy Neon; job migracyjny preprod jest
+  w [workflow branchu `dev`](https://github.com/michalantczak10/sklepzdoniczkami/blob/dev/.github/workflows/ci.yml)
+  i zakończył się powodzeniem w [runie wdrażanego commita](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36829814318).
 - Render production wskazuje `main`, ma plan Free i `autoDeployTrigger: off`.
   Jego niesufiksowany `DATABASE_URL` wskazuje bazę `sklepzdoniczkami` i rolę
   owner, a endpoint nie należy do widocznego projektu Neon. Brak
