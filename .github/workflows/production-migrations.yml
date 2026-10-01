@@ -3,6 +3,15 @@ name: Production database migrations
 on:
   workflow_dispatch:
     inputs:
+      target_state:
+        description: Identify the verified production target state
+        required: true
+        type: choice
+        options:
+          - not-confirmed
+          - existing-production
+          - verified-empty-bootstrap
+        default: not-confirmed
       backup_restore_verified:
         description: Confirm that a production backup was restored and verified separately
         required: true
@@ -31,6 +40,7 @@ jobs:
   production-migrations:
     if: >-
       github.ref == 'refs/heads/main' &&
+      inputs.target_state != 'not-confirmed' &&
       inputs.backup_restore_verified == 'verified' &&
       inputs.confirm_migration == 'migrate-production'
     name: Back up and migrate production database
@@ -45,6 +55,7 @@ jobs:
       DATABASE_NAME_PRODUCTION: sklepzdoniczkami_prod
       DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_MIGRATE }}
       EXPECTED_DATABASE_HOST_PRODUCTION: ${{ vars.EXPECTED_DATABASE_HOST_PRODUCTION }}
+      PRODUCTION_TARGET_STATE: ${{ inputs.target_state }}
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
       BACKUP_HMAC_KEY: ${{ secrets.BACKUP_HMAC_KEY }}
     steps:
@@ -103,6 +114,11 @@ jobs:
                       ")"
                   )
                   has_migration_history = cursor.fetchone()[0]
+                  cursor.execute(
+                      "SELECT count(*) FROM information_schema.tables "
+                      "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+                  )
+                  public_table_count = cursor.fetchone()[0]
                   if has_migration_history:
                       cursor.execute("SELECT count(*) FROM public.django_migrations")
                       migration_count = cursor.fetchone()[0]
@@ -112,11 +128,19 @@ jobs:
               raise SystemExit("Connected to an unexpected production database")
           if "migrat" not in database_user.lower():
               raise SystemExit("Connected using a role that is not designated for migrations")
-          if not has_migration_history or migration_count == 0:
+          target_state = os.environ["PRODUCTION_TARGET_STATE"]
+          if target_state == "existing-production" and (
+              not has_migration_history or migration_count == 0
+          ):
               raise SystemExit(
-                  "Production migration target has no applied migration history; "
-                  "restore and verify production data before migrating"
+                  "Existing production target must have applied migration history"
               )
+          if target_state == "verified-empty-bootstrap" and public_table_count != 0:
+              raise SystemExit(
+                  "Empty bootstrap target must not contain public database tables"
+              )
+          if target_state not in {"existing-production", "verified-empty-bootstrap"}:
+              raise SystemExit("Production target state must be explicitly selected")
           PY
 
       - name: Back up and encrypt the migration target
