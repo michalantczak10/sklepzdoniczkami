@@ -164,9 +164,13 @@ Docelowo:
   sekretów szyfrujących. Limited role URLs są zapisane w GitHub Environment
   `production`; workflow dodatkowo odrzuca role z nadmiernymi uprawnieniami.
   Dla istniejącej bazy wymaga, by migrator był właścicielem publicznych
-  obiektów; dla pustego bootstrapu wymaga braku takich obiektów.
-  Nie był uruchamiany; nie wykonywać migracji ani
-  deployu production przed potwierdzeniem źródła danych i odtworzenia backupu.
+  obiektów oraz oddzielnie zweryfikowanego odtworzenia backupu. Pusty bootstrap
+  wymaga braku obiektów publicznych i jawnego potwierdzenia, że legacy SQLite
+  jest celowo odrzucane. Ścieżka pustego bootstrapu została wykonana 2026-10-01
+  w [runie 36860541866](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36860541866).
+  Przed kolejnymi zmianami produkcyjnymi nadal wymagane są zaszyfrowane backupy
+  i okresowe próby odtworzenia; nie używać pustego bootstrapu do istniejącej
+  bazy ani gdy stare dane mają zostać zachowane.
 - Dodawać testy migracji i plan rollbacku dla zmian schematu; migracje muszą
   być kompatybilne z wersją aplikacji działającą równolegle podczas deployu.
 
