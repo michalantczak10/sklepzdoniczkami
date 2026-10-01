@@ -83,3 +83,29 @@ Update 2026-09-29 20:47:26:
 - CI uruchomione z PR po zmianach przeszło: testy Django na Neon PostgreSQL,
   kontrola migracji i Playwright E2E (również po przełączeniu sekretu aplikacji
   na ograniczoną rolę `sklepzdoniczkami_dev_web`).
+
+---
+
+## Aktualizacja produkcji 2026-10-01
+
+- Właściciel zaakceptował uruchomienie produkcji bez historycznych zamówień.
+  PR #49 dodał osobne, jawne potwierdzenie odrzucenia danych SQLite dla pustego
+  bootstrapu; istniejąca baza nadal wymaga potwierdzonego backupu i restore.
+  PR przeszedł trzy niezależne review i zielone CI.
+- Produkcyjny workflow zweryfikował host, bazę `sklepzdoniczkami_prod`,
+  ograniczoną rolę migracyjną i pusty schemat, po czym wykonał zaszyfrowany
+  backup przed DDL i migracje w runie
+  [36860541866](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36860541866).
+- Backup zaszyfrowany po migracji również zakończył się powodzeniem:
+  [run 36862495568](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36862495568).
+  Test odtworzenia w izolowanym środowisku pozostaje wymagany.
+- Render production używa teraz `APP_ENV=production`,
+  `DATABASE_URL_PRODUCTION` do Neon przez rolę
+  `sklepzdoniczkami_prod_web_limited`, nazwy bazy `sklepzdoniczkami_prod`
+  i sufiksowanych kluczy Stripe. Stare ogólne zmienne zostały usunięte.
+  Commit `735d256b034e98410e7555c7ab1f76d35e0cafbf` wdrożył się poprawnie;
+  domena Render, domena sklepu i `/admin/login/` zwróciły HTTP 200.
+- Historyczne zamówienia nie zostały przeniesione. Baza nie ma jeszcze
+  użytkownika administratora ani aktywnego katalogu produkcyjnego; przed
+  przyjęciem zamówień trzeba utworzyć konto admina i wprowadzić prawdziwe
+  produkty. Render nadal jest na planie Free, a media pozostają nietrwałe.
