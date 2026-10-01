@@ -173,7 +173,10 @@ na branchu `main`.
 akceptowalny dla sklepu przyjmującego prawdziwe zamówienia. Render wprost
 odradza plan Free do produkcji; usypia usługę po bezczynności, a jej wznowienie
 może trwać około minuty. Przed uruchomieniem lub dalszą obsługą realnych
-zamówień należy przenieść usługę produkcyjną na płatny plan Render albo
+zamówień trzeba najpierw skonfigurować i zweryfikować trwałą bazę PostgreSQL,
+backup i próbę odtworzenia. SQLite używane przy braku poprawnego URL-a jest
+plikiem w efemerycznym filesystemie Render i nie zapewnia trwałości zamówień.
+Następnie należy przenieść usługę produkcyjną na płatny plan Render albo
 wybrać inny hosting o wymaganej dostępności. Obecny `render.yaml` nadal
 deklaruje `plan: free` dla produkcji; przed synchronizacją Blueprintu dla live
 trzeba jawnie zmienić plan usługi na wybrany płatny wariant. Nie ustawiam
@@ -240,6 +243,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    Brakuje `APP_ENV`, `DATABASE_URL_PRODUCTION` i
    `DJANGO_SECRET_KEY_PRODUCTION`; aktualny kod domyślnie wybiera
    `APP_ENV=development` i SQLite, bo nie ma `DATABASE_URL_DEVELOPMENT`.
+   SQLite znajduje się na efemerycznym filesystemie Render, więc zapisy
+   zamówień mogą zniknąć przy restarcie/redeployu. Jeśli sklep już przyjmuje
+   prawdziwe zamówienia, potraktować to jako pilny incydent trwałości danych.
    Nie przepinać production na Neon `prod`, nie migrować i nie usuwać starej
    bazy, dopóki nie zostaną ustalone aktywne dane oraz ich kopia.
 5. **Oczekuje:** po potwierdzeniu źródła production wykonać backup i próbę
@@ -249,12 +255,13 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 6. **Oczekuje:** przygotować produkcyjny root branch lub jawnie zaakceptować
    niezależny backup zamiast PITR. Cutover wykonać dopiero po końcowej
    synchronizacji zapisów i weryfikacji danych docelowych.
-7. **Decyzja budżetowa:** Render production pozostaje na Free, bez trwałego
-   storage mediów. Przed przyjmowaniem prawdziwych zamówień wybrać płatny plan
-   lub hosting oraz object storage i dopiero po migracji/zweryfikowaniu mediów
-   wdrożyć te zmiany. Nie zmieniać planu automatycznie. Jeśli sklep już
-   obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
-   trwałości danych.
+7. **Decyzja budżetowa i blocker danych:** production pozostaje na Render Free,
+   z niezweryfikowanym URL-em i SQLite fallbackiem oraz bez trwałego storage
+   mediów. Przed przyjmowaniem prawdziwych zamówień skonfigurować trwałą bazę
+   PostgreSQL i potwierdzić backup/restore; następnie wybrać płatny plan lub
+   hosting oraz object storage, przenieść media i zweryfikować migrację. Nie
+   zmieniać planu ani źródła danych automatycznie. Jeśli sklep już obsługuje
+   klientów, potraktować to jako pilny incydent dostępności i trwałości danych.
 8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
    runtime role bez DDL, a workflow CI na branchu `dev` wykonuje metadata
    rename i migracje rolą migrate przed deployem. Render wdraża po zielonych checkach;
@@ -300,8 +307,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   Jego niesufiksowany `DATABASE_URL` wskazuje bazę `sklepzdoniczkami` i rolę
   owner, a endpoint nie należy do widocznego projektu Neon. Brak
   `APP_ENV`/zmiennych sufiksowanych oznacza, że aktualny kod wybiera
-  development/SQLite. Nie potwierdzono, czy stary endpoint zawiera dane
-  biznesowe; nie wykonywano tam migracji ani cutoveru.
+  development/SQLite z pliku na efemerycznym filesystemie Render. Zapisy
+  mogą nie przetrwać restartu/redeployu; nie potwierdzono, czy stary endpoint
+  zawiera dane biznesowe i nie wykonywano tam migracji ani cutoveru.
 - Render preprod wskazuje `dev`, ma plan Free i `autoDeployTrigger: checksPass`.
   Używa bazy `sklepzdoniczkami_preprod` na znanym branchu `preprod`, z
   oddzielną rolą runtime; job migracyjny z `.github/workflows/ci.yml` na
