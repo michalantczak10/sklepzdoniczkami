@@ -166,7 +166,8 @@ Docelowo:
 Na razie pozostać przy Renderze i Neon. Live preprod jest teraz skierowany na
 branch `dev`, korzysta z ograniczonej roli runtime i przeszedł sprawdzenie
 HTTP oraz syntetycznego katalogu. Produkcja nadal wskazuje `main`, ale jej
-auto-deploy jest wyłączony zarówno w Renderze, jak i w `render.yaml`.
+auto-deploy jest wyłączony zarówno w Renderze, jak i w aktualnym `render.yaml`
+na branchu `main`.
 
 **Warunek wejścia w realną produkcję:** obecny Render `free` nie jest
 akceptowalny dla sklepu przyjmującego prawdziwe zamówienia. Render wprost
@@ -255,8 +256,8 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    obsługuje klientów, potraktować to jako pilną poprawkę dostępności i
    trwałości danych.
 8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
-   runtime role bez DDL, a GitHub Actions wykonuje metadata rename i migracje
-   rolą migrate przed deployem. Render wdraża po zielonych checkach;
+   runtime role bez DDL, a workflow CI na branchu `dev` wykonuje metadata
+   rename i migracje rolą migrate przed deployem. Render wdraża po zielonych checkach;
    sprawdzono HTTP 200 i syntetyczny katalog.
 
 ### P1 — spójny developer workflow
@@ -303,8 +304,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   biznesowe; nie wykonywano tam migracji ani cutoveru.
 - Render preprod wskazuje `dev`, ma plan Free i `autoDeployTrigger: checksPass`.
   Używa bazy `sklepzdoniczkami_preprod` na znanym branchu `preprod`, z
-  oddzielną rolą runtime; sekrety migracyjne są wyłącznie w GitHub Environment
-  `preprod`. Deploy i syntetyczny katalog zweryfikowano przez HTTP 200.
+  oddzielną rolą runtime; job migracyjny z `.github/workflows/ci.yml` na
+  branchu `dev` używa sekretu wyłącznie z GitHub Environment `preprod`. Deploy
+  i syntetyczny katalog zweryfikowano przez HTTP 200.
 - Workflow backupu nadal nie dowodzi istnienia użytecznych kopii danych
   produkcyjnych; targetowany `sklepzdoniczkami_prod` zgłaszał brak
   `django_migrations`, a branch `prod` był pusty przy ostatniej weryfikacji.
