@@ -96,10 +96,27 @@ jobs:
               with connection.cursor() as cursor:
                   cursor.execute("SELECT current_database(), current_user")
                   database_name, database_user = cursor.fetchone()
+                  cursor.execute(
+                      "SELECT EXISTS ("
+                      "SELECT 1 FROM information_schema.tables "
+                      "WHERE table_schema = 'public' AND table_name = 'django_migrations'"
+                      ")"
+                  )
+                  has_migration_history = cursor.fetchone()[0]
+                  if has_migration_history:
+                      cursor.execute("SELECT count(*) FROM public.django_migrations")
+                      migration_count = cursor.fetchone()[0]
+                  else:
+                      migration_count = 0
           if database_name != "sklepzdoniczkami_prod":
               raise SystemExit("Connected to an unexpected production database")
           if "migrat" not in database_user.lower():
               raise SystemExit("Connected using a role that is not designated for migrations")
+          if not has_migration_history or migration_count == 0:
+              raise SystemExit(
+                  "Production migration target has no applied migration history; "
+                  "restore and verify production data before migrating"
+              )
           PY
 
       - name: Back up and encrypt the migration target
