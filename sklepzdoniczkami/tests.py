@@ -1,3 +1,4 @@
+from io import StringIO
 from importlib import import_module
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ import stripe
 from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
@@ -64,6 +66,100 @@ class PreprodSeedCommandTests(TestCase):
         self.assertTrue(
             Product.objects.filter(slug="preprod-monstera-deliciosa").exists()
         )
+
+
+class FirstAdminBootstrapCommandTests(TestCase):
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_creates_first_superuser_without_printing_password(self):
+        password = "Quartz-Birch-83-Riverstone!"
+        output = StringIO()
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": password}):
+            call_command(
+                "bootstrap_first_admin",
+                username="store-admin",
+                email="owner@example.com",
+                confirm_production_database="sklepzdoniczkami_prod",
+                stdout=output,
+                verbosity=0,
+            )
+
+        user = User.objects.get(username="store-admin")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password(password))
+        self.assertNotIn(password, output.getvalue())
+
+    @override_settings(APP_ENV="development")
+    def test_bootstrap_refuses_nonproduction_environment(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "APP_ENV=production"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_a_second_superuser(self):
+        User.objects.create_superuser(
+            username="existing-admin",
+            email="existing@example.com",
+            password="Quartz-Birch-83-Riverstone!",
+        )
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "already exists"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 1)
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_weak_password(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "password123"}):
+            with self.assertRaisesMessage(CommandError, "at least 16 characters"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_invalid_email(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(
+                CommandError, "did not pass validation"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="not-an-email",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_empty_username(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "username must not be empty"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="  ",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
 
 
 class SampleProductCommandTests(TestCase):

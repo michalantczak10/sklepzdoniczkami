@@ -73,6 +73,27 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
   job sprząta ją również po nieudanym teście.
 - `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
   Artefakty są przechowywane przez 90 dni.
+- `bootstrap-production-admin.yml` pozwala jednorazowo utworzyć pierwszego
+  administratora produkcji. Używaj go dopiero po scaleniu na `main` i po
+  ustawieniu tymczasowego sekretu w środowisku GitHub `production`.
+
+## Pierwszy administrator produkcji
+
+Nie wpisuj hasła administratora w polu wejściowym workflow, issue ani czacie.
+Zapisz mocne, unikalne hasło w menedżerze haseł, a następnie:
+
+1. W GitHub otwórz `Settings` → `Environments` → `production` i dodaj sekret
+   `INITIAL_ADMIN_PASSWORD` (co najmniej 16 znaków).
+2. W `Actions` uruchom `Bootstrap first production administrator` z brancha
+   `main`; podaj nazwę użytkownika i e-mail oraz wybierz potwierdzenie
+   `create-first-admin`.
+3. Po udanym runie usuń sekret `INITIAL_ADMIN_PASSWORD` ze środowiska GitHub.
+   Hasło zachowaj w menedżerze haseł.
+
+Workflow sprawdza przypięty host, bazę `sklepzdoniczkami_prod` i ograniczoną
+rolę runtime. Odmówi działania poza produkcją, gdy istnieje już superuser,
+gdy hasło jest słabe albo dane logowania nie przechodzą walidacji. Nie zmienia
+konfiguracji Stripe ani Rendera i nie uruchamia płatności.
 
 ## Oddzielne środowiska i bazy danych
 

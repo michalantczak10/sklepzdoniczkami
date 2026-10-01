@@ -1,0 +1,166 @@
+name: Bootstrap first production administrator
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: Username for the initial administrator
+        required: true
+        type: string
+      email:
+        description: Email address for the initial administrator
+        required: true
+        type: string
+      confirm_creation:
+        description: Confirm one-time creation of the first production administrator
+        required: true
+        type: choice
+        options:
+          - do-not-run
+          - create-first-admin
+        default: do-not-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-first-admin-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  create-first-admin:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.confirm_creation == 'create-first-admin'
+    name: Create the first production administrator
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    env:
+      APP_ENV: production
+      DEBUG: "False"
+      ALLOWED_HOSTS: sklepzdoniczkami.pl,sklepzdoniczkami.onrender.com
+      CSRF_TRUSTED_ORIGINS: https://sklepzdoniczkami.pl,https://sklepzdoniczkami.onrender.com
+      SITE_NAME: Sklepzdoniczkami
+      DATABASE_NAME_PRODUCTION: sklepzdoniczkami_prod
+      PRODUCTION_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+
+    steps:
+      - name: Check the temporary password secret
+        env:
+          INITIAL_ADMIN_PASSWORD: ${{ secrets.INITIAL_ADMIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ${#INITIAL_ADMIN_PASSWORD} -lt 16 ]]; then
+            echo "::error::Set a temporary INITIAL_ADMIN_PASSWORD secret (at least 16 characters) in the production environment."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set an ephemeral Django key
+        run: python -c "import secrets; print('DJANGO_SECRET_KEY_PRODUCTION=' + secrets.token_urlsafe(48))" >> "$GITHUB_ENV"
+
+      - name: Validate the production database target
+        env:
+          DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_WEB }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          import psycopg2
+
+          database_url = urlparse(os.environ["DATABASE_URL_PRODUCTION"])
+          if database_url.scheme not in {"postgres", "postgresql"}:
+              raise SystemExit("Production admin bootstrap requires PostgreSQL.")
+          if database_url.path.lstrip("/").split("?")[0] != "sklepzdoniczkami_prod":
+              raise SystemExit("Admin bootstrap target must be sklepzdoniczkami_prod.")
+          expected_host = os.environ["PRODUCTION_DATABASE_HOST"]
+          if not expected_host or (database_url.hostname or "").lower() != expected_host.lower():
+              raise SystemExit("Admin bootstrap URL does not match the pinned production host.")
+          if database_url.username != "sklepzdoniczkami_prod_web_limited":
+              raise SystemExit("Admin bootstrap must use the limited production runtime role.")
+
+          with psycopg2.connect(
+              os.environ["DATABASE_URL_PRODUCTION"],
+              connect_timeout=15,
+              options="-c default_transaction_read_only=on",
+          ) as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute(
+                      "SELECT current_database(), current_user, "
+                      "rolcreatedb, rolcreaterole, rolsuper, rolreplication, "
+                      "pg_has_role(current_user, 'neon_superuser', 'MEMBER'), "
+                      "has_schema_privilege(current_user, 'public', 'CREATE'), "
+                      "to_regclass('public.auth_user') IS NOT NULL, "
+                      "has_table_privilege(current_user, 'public.auth_user', 'INSERT'), "
+                      "has_sequence_privilege("
+                      "current_user, pg_get_serial_sequence('public.auth_user', 'id'), 'USAGE') "
+                      "FROM pg_roles WHERE rolname = current_user"
+                  )
+                  row = cursor.fetchone()
+          if row is None:
+              raise SystemExit("Could not verify the production runtime role.")
+          (
+              database_name,
+              database_user,
+              can_create_databases,
+              can_create_roles,
+              is_superuser,
+              can_replicate,
+              is_neon_superuser,
+              can_create_objects,
+              has_user_table,
+              can_insert_users,
+              can_use_user_sequence,
+          ) = row
+          if database_name != "sklepzdoniczkami_prod":
+              raise SystemExit("Connected to an unexpected production database.")
+          if database_user != "sklepzdoniczkami_prod_web_limited":
+              raise SystemExit("Connected with an unexpected production database role.")
+          if any(
+              (
+                  can_create_databases,
+                  can_create_roles,
+                  is_superuser,
+                  can_replicate,
+                  is_neon_superuser,
+                  can_create_objects,
+              )
+          ):
+              raise SystemExit("Production runtime role has excessive privileges.")
+          if not (has_user_table and can_insert_users and can_use_user_sequence):
+              raise SystemExit("Production runtime role cannot create an administrator.")
+          PY
+
+      - name: Create the first administrator
+        env:
+          DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_WEB }}
+          ADMIN_USERNAME: ${{ inputs.username }}
+          ADMIN_EMAIL: ${{ inputs.email }}
+          INITIAL_ADMIN_PASSWORD: ${{ secrets.INITIAL_ADMIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python manage.py bootstrap_first_admin \
+            --username "$ADMIN_USERNAME" \
+            --email "$ADMIN_EMAIL" \
+            --confirm-production-database sklepzdoniczkami_prod
+          {
+            echo "The first production administrator was created."
+            echo "Store the chosen password in a password manager, then remove INITIAL_ADMIN_PASSWORD from the GitHub production environment."
+          } >> "$GITHUB_STEP_SUMMARY"
