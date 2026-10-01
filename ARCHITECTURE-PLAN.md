@@ -328,7 +328,10 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   `production`; starszych ról nie używać jako URL-i runtime/migracji.
 - Ręczny backup po migracji zakończył się powodzeniem w runie
   [36862495568](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36862495568).
-  Odtworzenie kopii w izolowanym środowisku pozostaje do wykonania.
+  Dodano ręczny workflow `.github/workflows/database-restore-test.yml`, który
+  po weryfikacji HMAC i odszyfrowaniu odtwarza wskazany backup w tymczasowym
+  PostgreSQL 18; nie łączy się z Neonem i nie zmienia produkcji. Test runu
+  `36862495568` pozostaje do wykonania po scaleniu workflow.
 - Nowa baza nie zawiera aktywnego katalogu sprzedażowego ani użytkownika
   administratora. Przed uruchomieniem sprzedaży należy utworzyć konto admina
   i wprowadzić zweryfikowany katalog; nie używać produktów demonstracyjnych
