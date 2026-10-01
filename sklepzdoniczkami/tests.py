@@ -134,6 +134,21 @@ class FirstAdminBootstrapCommandTests(TestCase):
         self.assertFalse(get_user_model().objects.exists())
 
     @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_numeric_password_that_meets_length_minimum(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "1234567890123456"}):
+            with self.assertRaisesMessage(
+                CommandError, "did not pass validation"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
     def test_bootstrap_rejects_invalid_email(self):
         with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
             with self.assertRaisesMessage(
