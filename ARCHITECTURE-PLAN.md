@@ -334,8 +334,9 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   [36862495568](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36862495568).
   Dodano ręczny workflow `.github/workflows/database-restore-test.yml`, który
   po weryfikacji HMAC i odszyfrowaniu odtwarza wskazany backup w tymczasowym
-  PostgreSQL 18; nie łączy się z Neonem i nie zmienia produkcji. Test runu
-  `36862495568` pozostaje do wykonania po scaleniu workflow.
+  PostgreSQL 18; nie łączy się z Neonem i nie zmienia produkcji. Odtworzenie
+  backupu z runu `36862495568` przeszło pomyślnie po scaleniu workflow:
+  [run 36878035101](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36878035101).
 - Nowa baza nie zawiera aktywnego katalogu sprzedażowego ani użytkownika
   administratora. Przed uruchomieniem sprzedaży należy utworzyć konto admina
   i wprowadzić zweryfikowany katalog; nie używać produktów demonstracyjnych
