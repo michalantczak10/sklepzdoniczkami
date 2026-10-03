@@ -187,12 +187,11 @@ Render, domenie sklepu i stronie logowania administratora.
 
 **Pozostałe warunki stabilnej produkcji:** baza PostgreSQL Neon jest już
 skonfigurowana, a fallback do SQLite został usunięty z bieżącej konfiguracji
-Rendera. Usługa nadal działa jednak na planie `free`, który usypia aplikację po
-bezczynności, a jej wznowienie może trwać około minuty. Plan Free nie jest
-zalecany do sklepu przyjmującego prawdziwe zamówienia. `render.yaml` nadal
-deklaruje `plan: free`; przed synchronizacją Blueprintu dla live trzeba wybrać
-i ustawić płatny plan albo inny hosting. Nie zmieniam planu automatycznie,
-ponieważ wymaga to decyzji budżetowej.
+Rendera. Właściciel zdecydował 2026-10-02 pozostać na planie `free` na tym
+etapie; akceptujemy usypianie usługi po bezczynności i opóźniony cold start.
+`render.yaml` deklaruje `plan: free`. Nie zmieniać planu ani hostingu bez
+kolejnej zgody właściciela; przed większą sprzedażą ponownie ocenić ryzyko
+przestojów.
 
 Filesystem usług Render jest efemeryczny; pliki z `MEDIA_ROOT` mogą zniknąć
 przy redeployu, restarcie albo uśpieniu usługi Free. Przed dodaniem
@@ -263,11 +262,11 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
    branch, aby uzyskać Neon PITR, czy zaakceptować ochronę wyłącznie przez
    niezależne backupy. Historyczne zamówienia SQLite nie były przenoszone,
    zgodnie z decyzją właściciela.
-7. **Decyzja budżetowa i operacyjna:** Render production nadal ma plan Free,
-   a media nie mają trwałego object storage. Przed regularnym przyjmowaniem
-   prawdziwych zamówień wybrać płatny plan/hosting, przenieść zdjęcia do
-   object storage i przetestować odtworzenie backupu. Nie zmieniać planu
-   automatycznie.
+7. **Częściowo odroczone decyzją właściciela:** pozostawić Render production
+   na planie Free na początek; zaakceptować cold start i nie podnosić planu bez
+   nowej zgody. Media nadal nie mają trwałego object storage. Przed dodaniem
+   prawdziwych zdjęć wybrać i skonfigurować storage oraz przetestować
+   odtworzenie backupu mediów.
 8. **Ukończone:** preprod wskazuje `dev`, ma oddzielny URL i nazwę bazy,
    runtime role bez DDL, a workflow CI na branchu `dev` wykonuje metadata
    rename i migracje rolą migrate przed deployem ([workflow](https://github.com/michalantczak10/sklepzdoniczkami/blob/dev/.github/workflows/ci.yml),
@@ -297,6 +296,10 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
 3. Automatyzować merge tylko dla bezpiecznych, niskiego ryzyka zmian po
    zbudowaniu wiarygodnych statusów review; zachować ręczne zatwierdzenie
    produkcyjnego wdrożenia.
+4. Katalog z preprod może być publikowany na produkcji jako podgląd, ale
+   pozostaje syntetyczny i ma stan 0. Przed sprzedażą prawdziwych produktów
+   trzeba potwierdzić nazwy, opisy, ceny, zdjęcia i stany; nie wystawiać
+   przykładowych danych demonstracyjnych do sprzedaży.
 
 ## Stan ustalony przy przeglądzie
 
@@ -321,7 +324,23 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   Używa bazy `sklepzdoniczkami_preprod` na znanym branchu `preprod`, z
   oddzielną rolą runtime; job migracyjny z `.github/workflows/ci.yml` na
   branchu `dev` używa sekretu wyłącznie z GitHub Environment `preprod`. Deploy
-  i syntetyczny katalog zweryfikowano przez HTTP 200.
+  i syntetyczny katalog zweryfikowano przez HTTP 200. Odpowiedź HTTP 200
+  preprod potwierdzono ponownie 2026-10-02 po wybudzeniu usługi; pierwsze
+  żądanie przekroczyło limit 20 sekund. 2026-10-02 skonfigurowano dla preprod
+  klucze Stripe test i osobny endpoint webhooka dla
+  `checkout.session.completed` oraz `checkout.session.expired`; wdrożenie
+  zakończyło się powodzeniem. Podpisane, niepłatnicze zdarzenie testowe
+  otrzymało HTTP 200. Utworzono testową sesję Checkout, następnie ją wygaszono
+  bez płatności; anulowane zamówienia testowe usunięto, a zapas przywrócono.
+  Dwa lokalne scenariusze Playwright przeszły na Microsoft Edge. Pełny zakup
+  testowy zakończył się powodzeniem 2026-10-03: Stripe potwierdził sesję jako
+  `complete`/`paid` w trybie testowym (`livemode=false`), a strona sklepu
+  wyświetliła status „Opłacone”. Następnie potwierdzono, że odpowiadające tej
+  sesji rzeczywiste zdarzenie `checkout.session.completed` znajduje się wśród
+  zdarzeń dostarczonych pomyślnie do wszystkich aktywnych endpointów; endpoint
+  preprod jest włączony dla tego zdarzenia. Testowe zamówienie pozostawiono w
+  preprod wyłącznie jako ślad weryfikacji; nie realizować go. Żadna płatność
+  live nie została wykonana. Media object storage nie jest skonfigurowane.
 - Neon production został uruchomiony z pustego schematu w runie
   [36860541866](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36860541866).
   Stare zamówienia SQLite celowo pominięto. Zaszyfrowany backup przed migracją
@@ -343,18 +362,23 @@ zmiana dokłada pracę operacyjną i ryzyko migracji.
   Wykonano bezpłatny test poprawności podpisu przez wysłanie syntetycznego,
   niepłatniczego zdarzenia; aplikacja odpowiedziała HTTP 200. Nie wykonywano
   transakcji ani nie ujawniano sekretu webhooka.
-- Nowa baza nie zawiera aktywnego katalogu sprzedażowego ani użytkownika
-  administratora. Przed uruchomieniem sprzedaży należy utworzyć konto admina
-  i wprowadzić zweryfikowany katalog; nie używać produktów demonstracyjnych
-  z migracji jako oferty produkcyjnej.
+- Produkcyjny administrator `admin` został utworzony 2026-10-01 przez
+  chroniony workflow
+  [36903517437](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36903517437).
+  Tymczasowy sekret `INITIAL_ADMIN_PASSWORD` usunięto z GitHub Environment
+  `production` po powodzeniu. Nie zapisywać hasła w repozytorium ani
+  dokumentacji.
+- Produkcyjna baza nie ma zweryfikowanego katalogu sprzedażowego. Przed
+  uruchomieniem sprzedaży należy wprowadzić prawdziwe produkty, ceny, stany
+  i zdjęcia; nie używać produktów demonstracyjnych z migracji jako oferty.
 - Przygotowano chroniony workflow `.github/workflows/bootstrap-production-admin.yml`
   i komendę `bootstrap_first_admin` do utworzenia pierwszego superusera
-  z ograniczonej roli runtime. Workflow nie został jeszcze uruchomiony:
-  wymaga tymczasowego sekretu `INITIAL_ADMIN_PASSWORD` ustawionego przez
-  właściciela w GitHub Environment `production`.
+  z ograniczonej roli runtime. Tworzenie pierwszego konta zakończono; workflow
+  nie służy do resetowania hasła ani tworzenia kolejnych administratorów.
 - Produkcja nadal jest na Render Free i nie ma trwałego storage mediów.
-  Płatny plan i object storage wymagają decyzji budżetowej oraz migracji
-  zweryfikowanych plików.
+  Właściciel zdecydował pozostać na Free na tym etapie; planu nie podnosić.
+  Trwały storage i migracja zdjęć pozostają do zrobienia przed dodaniem
+  prawdziwej oferty.
 - Klucze szyfrujące pozostają repozytoryjnymi sekretami do czasu migracji
   historycznych backupów; nie rotować ich bez planu zachowania odczytu starych
   artefaktów.

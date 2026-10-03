@@ -79,3 +79,28 @@ def test_guest_can_submit_transfer_order(live_server, page: Page, product):
     expect(page.get_by_text("Metoda płatności: Przelew bankowy")).to_be_visible()
     order = Order.objects.get(email="anna-e2e@example.com")
     assert order.payment_method == "transfer"
+
+
+@pytest.mark.e2e
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("viewport_width", [320, 375, 768, 1280])
+def test_storefront_pages_fit_mobile_tablet_and_desktop(
+    live_server, page: Page, product, viewport_width
+):
+    page.set_viewport_size({"width": viewport_width, "height": 900})
+    page.goto(live_server.url + reverse("sklepzdoniczkami:home"))
+    page.locator("article.product-card").filter(has_text=product.name).get_by_role(
+        "button", name="Dodaj do koszyka"
+    ).click()
+
+    page_urls = (
+        reverse("sklepzdoniczkami:home"),
+        product.get_absolute_url(),
+        reverse("sklepzdoniczkami:cart"),
+        reverse("sklepzdoniczkami:checkout"),
+    )
+    for path in page_urls:
+        page.goto(live_server.url + path)
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth"
+        ), f"Horizontal page overflow at {viewport_width}px on {path}"
