@@ -1,3 +1,4 @@
+from decimal import Decimal
 from io import StringIO
 from importlib import import_module
 from tempfile import TemporaryDirectory
@@ -20,6 +21,9 @@ from django.urls import reverse
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
 from config.settings import resolve_app_env, validate_stripe_configuration
 from .management.commands.bootstrap_first_admin import Command as BootstrapFirstAdminCommand
+from .management.commands.seed_production_preview_catalog import (
+    Command as SeedProductionPreviewCatalogCommand,
+)
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -64,9 +68,156 @@ class PreprodSeedCommandTests(TestCase):
         self.assertEqual(Product.objects.filter(slug__startswith="preprod-").count(), 3)
         self.assertFalse(get_user_model().objects.exists())
         self.assertFalse(Order.objects.exists())
-        self.assertTrue(
-            Product.objects.filter(slug="preprod-monstera-deliciosa").exists()
+        product = Product.objects.get(slug="preprod-monstera-deliciosa")
+        self.assertEqual(
+            product.image,
+            "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
         )
+
+        product.stock = 3
+        product.price = "75.00"
+        product.image = ""
+        product.save(update_fields=["stock", "price", "image"])
+        call_command("seed_preprod_data", verbosity=0)
+        product.refresh_from_db()
+        self.assertEqual(product.stock, 3)
+        self.assertEqual(product.price, Decimal("75.00"))
+        self.assertEqual(
+            product.image,
+            "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+        )
+
+
+class ProductionPreviewCatalogCommandTests(TestCase):
+    def production_database_connection(self, *, options=None):
+        cursor = MagicMock()
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "db.example",
+            "PORT": "5432",
+            "OPTIONS": options or {},
+        }
+        database.cursor.return_value.__enter__.return_value = cursor
+        return database, cursor
+
+    def test_database_validation_rejects_connection_routing_override(self):
+        database, _ = self.production_database_connection(
+            options={"hostaddr": "203.0.113.1"}
+        )
+        with (
+            patch(
+                "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                {"default": database},
+            ),
+            patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "db.example"}),
+            self.assertRaisesMessage(CommandError, "pinned production database"),
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+        database.cursor.assert_not_called()
+
+    def test_database_validation_rejects_elevated_runtime_role(self):
+        database, cursor = self.production_database_connection()
+        cursor.fetchone.side_effect = [
+            ("sklepzdoniczkami_prod", "sklepzdoniczkami_prod_web_limited", "public"),
+            (False, False, False, False, True, False, False, False),
+        ]
+        with (
+            patch(
+                "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                {"default": database},
+            ),
+            patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "db.example"}),
+            self.assertRaisesMessage(CommandError, "excessive database privileges"),
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    def test_database_validation_rejects_schema_create_privilege(self):
+        database, cursor = self.production_database_connection()
+        cursor.fetchone.side_effect = [
+            ("sklepzdoniczkami_prod", "sklepzdoniczkami_prod_web_limited", "public"),
+            (True, False, False, False, False, False, False, False),
+        ]
+        with (
+            patch(
+                "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                {"default": database},
+            ),
+            patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "db.example"}),
+            self.assertRaisesMessage(CommandError, "excessive database privileges"),
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    @override_settings(APP_ENV="development")
+    def test_preview_command_refuses_to_run_outside_production(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "APP_ENV=production"):
+                call_command("seed_production_preview_catalog", confirm_production_preview=True)
+
+        self.assertFalse(Category.objects.filter(slug__startswith="preprod-").exists())
+        self.assertFalse(Product.objects.filter(slug__startswith="preprod-").exists())
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_requires_explicit_confirmation(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "--confirm-production-preview"):
+                call_command("seed_production_preview_catalog")
+
+        self.assertFalse(Category.objects.filter(slug__startswith="preprod-").exists())
+        self.assertFalse(Product.objects.filter(slug__startswith="preprod-").exists())
+
+    @override_settings(APP_ENV="production")
+    def test_preview_catalog_is_idempotent_and_never_sellable(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            call_command(
+                "seed_production_preview_catalog",
+                confirm_production_preview=True,
+                verbosity=0,
+            )
+            call_command(
+                "seed_production_preview_catalog",
+                confirm_production_preview=True,
+                verbosity=0,
+            )
+
+        products = Product.objects.filter(slug__startswith="preprod-")
+        self.assertEqual(products.count(), 3)
+        self.assertEqual(products.filter(stock=0, is_active=True).count(), 3)
+        self.assertEqual(products.exclude(image="").count(), 3)
+        self.assertFalse(Order.objects.exists())
+        self.assertContains(
+            self.client.get(reverse("sklepzdoniczkami:home")),
+            "Monstera deliciosa — test",
+        )
+        self.assertContains(
+            self.client.get(reverse("sklepzdoniczkami:product", args=["preprod-monstera-deliciosa"])),
+            "Chwilowo niedostępny",
+        )
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_to_overwrite_existing_stock(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            call_command(
+                "seed_production_preview_catalog",
+                confirm_production_preview=True,
+                verbosity=0,
+            )
+            product = Product.objects.get(slug="preprod-monstera-deliciosa")
+            product.stock = 1
+            product.save(update_fields=["stock"])
+
+            with self.assertRaisesMessage(CommandError, "conflicting data"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        product.refresh_from_db()
+        self.assertEqual(product.stock, 1)
 
 
 class FirstAdminBootstrapCommandTests(TestCase):

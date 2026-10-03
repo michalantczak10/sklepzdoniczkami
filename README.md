@@ -75,24 +75,22 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
   Artefakty są przechowywane przez 90 dni.
 - `bootstrap-production-admin.yml` pozwala jednorazowo utworzyć pierwszego
   administratora produkcji. Read-only preflight można uruchomić z `main`;
-  tworzenie konta wymaga tymczasowego sekretu w GitHub Environment `production`.
+  pierwsze utworzenie wymaga tymczasowego sekretu w GitHub Environment
+  `production` (zostało już wykonane).
+- `production-preview-catalog.yml` dodaje na wyraźne żądanie katalog
+  demonstracyjny do produkcji. Uruchamiaj go dopiero po wdrożeniu nowego kodu
+  na Renderze; tworzone produkty mają stan 0, więc nie można ich kupić.
 
 ## Pierwszy administrator produkcji
 
-Nie wpisuj hasła administratora w polu wejściowym workflow, issue ani czacie.
-Preflight można uruchomić przed ustawieniem hasła, bez nazwy użytkownika i
-adresu e-mail. Zapisz mocne, unikalne hasło w menedżerze haseł, a następnie:
-
-1. Opcjonalnie uruchom workflow w trybie `preflight-only`; sprawdzi
-   połączenie z właściwą bazą i uprawnienia bez tworzenia ani zmiany danych.
-2. Gdy będziesz gotowy do utworzenia konta, w GitHub otwórz
-   `Settings` → `Environments` → `production` i dodaj sekret
-   `INITIAL_ADMIN_PASSWORD` (co najmniej 16 znaków).
-3. W `Actions` uruchom `Bootstrap first production administrator` z brancha
-   `main`, wybierz tryb `create-first-admin`, podaj nazwę użytkownika i e-mail
-   oraz wybierz potwierdzenie `create-first-admin`.
-4. Po udanym runie usuń sekret `INITIAL_ADMIN_PASSWORD` ze środowiska GitHub.
-   Hasło zachowaj w menedżerze haseł.
+Pierwsze konto administratora produkcji zostało utworzone 2026-10-01
+workflowem
+[36903517437](https://github.com/michalantczak10/sklepzdoniczkami/actions/runs/36903517437).
+Jednorazowy sekret `INITIAL_ADMIN_PASSWORD` został po tym usunięty z GitHub
+Environment `production`. Tryb `preflight-only` pozostaje dostępny do
+odczytowego sprawdzenia połączenia i uprawnień. Nie uruchamiaj trybu tworzenia
+ponownie — workflow nie służy do resetowania hasła ani tworzenia kolejnych
+administratorów.
 
 Workflow sprawdza przypięty host, bazę `sklepzdoniczkami_prod` i ograniczoną
 rolę runtime, używając istniejącego sekretu `DATABASE_URL_PRODUCTION_WEB`
@@ -109,8 +107,17 @@ Projekt ma trzy odizolowane środowiska:
 | Środowisko | Aplikacja | Baza | Dane i płatności |
 |---|---|---|---|
 | Development | Host Django / CI | Lokalny PostgreSQL; push: Neon dev; PR: SQLite | Testowe |
-| Preprod | Render `sklepzdoniczkami-preprod` | Neon `sklepzdoniczkami_preprod` | Katalog syntetyczny, płatności testowe lub wyłączone |
+| Preprod | Render `sklepzdoniczkami-preprod` | Neon `sklepzdoniczkami_preprod` | Katalog syntetyczny, Stripe test mode |
 | Produkcja | Render `sklepzdoniczkami` | Neon `sklepzdoniczkami_prod` | Prawdziwe zamówienia, klucze Stripe live |
+
+Preprod ma skonfigurowane klucze Stripe test i osobny webhook. Podpisane
+zdarzenie webhook bez płatności oraz pełny zakup testowy zostały sprawdzone
+2026-10-03. Stripe potwierdził także, że rzeczywiste zdarzenie
+`checkout.session.completed` dla tego zakupu zostało dostarczone do aktywnych
+endpointów webhook. Wykorzystano standardową testową kartę Stripe; płatność nie
+obciążyła żadnej prawdziwej karty. Testowe zamówienie pozostawiono na preprod
+jako potwierdzenie przepływu — nie realizować go. Nie używaj kluczy live do
+testów.
 
 Render service slugs używają myślników. Nazwy baz PostgreSQL dla środowisk
 używają podkreślenia i sufiksu (`_dev`, `_preprod`, `_prod`). Jeśli istniejąca
@@ -132,6 +139,13 @@ jest dokładnie `sklepzdoniczkami_preprod`; analogicznie produkcja wymaga
 Lokalny `.env` ma wskazywać tylko lokalny PostgreSQL, nigdy Neon production.
 Preprod automatycznie tworzy kilka fikcyjnych kategorii i produktów podczas
 wdrożenia. Nie kopiuje bazy ani danych użytkowników/zamówień z produkcji.
+Ten sam syntetyczny katalog może być dodany do produkcji przez ręczny workflow
+`Add production preview catalogue`, uruchomiony z `main` po wdrożeniu strony.
+Produkty mają widoczny dopisek „test”, przykładowe ceny i opisy, a ich stan
+magazynowy wynosi 0; są wyłącznie do podglądu i nie można złożyć na nie
+zamówienia. Workflow odmawia nadpisania istniejących danych o tych samych
+slugach. Zdjęcia pochodzą z wersjonowanych plików statycznych aplikacji, nie
+z plików `media/` ani z produkcyjnej bazy preprod.
 Preprod może działać bez Stripe: płatność kartą jest wtedy ukryta, a przelew i
 pobranie pozostają dostępne. Po skonfigurowaniu Stripe należy ustawić komplet
 kluczy testowych i sekret webhooka (`whsec_`); Django odrzuca tam klucze

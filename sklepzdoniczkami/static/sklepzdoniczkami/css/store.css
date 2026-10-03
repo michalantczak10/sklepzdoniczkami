@@ -261,3 +261,45 @@ td { font-size: 13px; }
 /* Skip link for keyboard users */
 .skip-link { position: absolute; left: -999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
 .skip-link:focus, .skip-link:active { left: 12px; top: 12px; width: auto; height: auto; padding: 8px 12px; background: var(--green); color: white; z-index: 1000; border-radius: 4px; font-weight: 700; }
+
+img { display: block; max-width: 100%; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-width: 0; max-width: 100%; }
+.product-card, .product-info, .product-title-row, .product-detail, .purchase-card { min-width: 0; }
+.product-card h3, .detail-copy h1 { overflow-wrap: anywhere; }
+.detail-art img.product-image { width: 100%; height: 100%; max-height: 395px; }
+
+@media (max-width: 900px) {
+    .nav-links { min-width: 0; max-width: 100%; overscroll-behavior-inline: contain; scrollbar-color: #aab5a1 transparent; scrollbar-width: thin; }
+    .hero { grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); }
+    .hero-copy { padding: clamp(28px, 5vw, 42px); }
+    .product-page .product-detail { gap: 22px; }
+}
+@media (max-width: 650px) {
+    .container { width: min(500px, calc(100% - 28px)); }
+    .nav { align-items: stretch; }
+    .nav-links { gap: 12px; padding: 4px 2px 8px; }
+    .hero { grid-template-columns: minmax(0, 1fr); }
+    .hero-copy { padding: 32px 24px 8px; }
+    .hero-art { min-height: 245px; }
+    .section-heading, .category-section-heading { min-width: 0; }
+    .category-card { grid-template-columns: minmax(92px, .8fr) 1.2fr; }
+    .product-grid, .related-grid { gap: 10px; }
+    .product-art { min-height: 0; aspect-ratio: 1 / 1; }
+    .product-info { padding: 11px; }
+    .product-title-row { gap: 5px; }
+    .product-card h3 { font-size: clamp(13px, 3.8vw, 15px); }
+    .product-description { min-height: 48px; }
+    .product-buy-row { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+    .unavailable { align-self: center; }
+    .card { padding: 16px; }
+    .detail-art img.product-image { width: 86%; height: 285px; }
+    th, td { padding: 11px 12px; }
+}
+@media (max-width: 360px) {
+    .container { width: calc(100% - 24px); }
+    .brand { font-size: 15px; }
+    .product-info { padding: 9px; }
+    .product-description { min-height: 58px; }
+    .price { font-size: 15px; }
+    .unavailable { font-size: 9px; }
+}

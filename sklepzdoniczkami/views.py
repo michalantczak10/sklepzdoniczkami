@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, ListView
 
 from .models import Category, Order, OrderItem, Product
+from .sample_catalog import SAMPLE_CATALOG
 from .services import cancel_order_and_release_inventory, reserve_order_inventory
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -105,6 +106,13 @@ class ProductListView(ListView):
             .order_by("name")
         )
         card_details = {
+            sample["category"]["slug"]: {
+                "image": sample["category_image"],
+                "description": "Syntetyczna kolekcja demonstracyjna.",
+            }
+            for sample in SAMPLE_CATALOG
+        }
+        card_details.update({
             "ceramiczne": {
                 "image": "sklepzdoniczkami/img/products/pot-ceramic.jpg",
                 "description": "Szkliwione wykończenia i ponadczasowe kształty.",
@@ -117,7 +125,7 @@ class ProductListView(ListView):
                 "image": "sklepzdoniczkami/img/products/pot-cement.jpg",
                 "description": "Proste formy o surowym, nowoczesnym charakterze.",
             },
-        }
+        })
         context["categories"] = categories
         context["category_cards"] = [
             {

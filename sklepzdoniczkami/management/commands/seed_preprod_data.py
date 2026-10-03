@@ -1,44 +1,8 @@
-from decimal import Decimal
-
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from sklepzdoniczkami.models import Category, Product
-
-
-SAMPLE_CATALOG = (
-    {
-        "category": {"name": "Rośliny zielone", "slug": "preprod-rosliny-zielone"},
-        "products": (
-            {
-                "name": "Monstera deliciosa — test",
-                "slug": "preprod-monstera-deliciosa",
-                "description": "Syntetyczny produkt demonstracyjny środowiska preprod.",
-                "price": Decimal("49.90"),
-                "stock": 12,
-            },
-            {
-                "name": "Epipremnum aureum — test",
-                "slug": "preprod-epipremnum-aureum",
-                "description": "Syntetyczny produkt demonstracyjny środowiska preprod.",
-                "price": Decimal("29.90"),
-                "stock": 8,
-            },
-        ),
-    },
-    {
-        "category": {"name": "Doniczki — preprod", "slug": "preprod-doniczki"},
-        "products": (
-            {
-                "name": "Doniczka ceramiczna — test",
-                "slug": "preprod-doniczka-ceramiczna",
-                "description": "Syntetyczny produkt demonstracyjny środowiska preprod.",
-                "price": Decimal("39.90"),
-                "stock": 20,
-            },
-        ),
-    },
-)
+from sklepzdoniczkami.sample_catalog import SAMPLE_CATALOG
 
 
 class Command(BaseCommand):
@@ -58,11 +22,14 @@ class Command(BaseCommand):
             created_categories += int(category_created)
 
             for product_data in sample["products"]:
-                _, product_created = Product.objects.get_or_create(
+                product, product_created = Product.objects.get_or_create(
                     slug=product_data["slug"],
-                    defaults={"category": category, **product_data},
+                    defaults={"category": category, **product_data, "is_active": True},
                 )
                 created_products += int(product_created)
+                if not product_created and product.image != product_data["image"]:
+                    product.image = product_data["image"]
+                    product.save(update_fields=["image"])
 
         self.stdout.write(
             self.style.SUCCESS(
