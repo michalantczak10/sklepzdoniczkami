@@ -50,6 +50,101 @@ class AppEnvironmentTests(SimpleTestCase):
         self.assertEqual(resolve_app_env(" PREPROD ", is_render=True), "preprod")
 
 
+class SearchEngineOptimizationTests(TestCase):
+    @override_settings(SEO_INDEXING_ENABLED=True, SITE_URL="https://sklepzdoniczkami.pl")
+    def test_robots_allows_public_pages_and_advertises_sitemap(self):
+        response = self.client.get(reverse("robots_txt"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "User-agent: *")
+        self.assertContains(response, "Disallow: /checkout/")
+        self.assertContains(
+            response,
+            "Sitemap: https://sklepzdoniczkami.pl/sitemap.xml",
+        )
+        self.assertNotIn("Disallow: /\n", response.content.decode())
+
+    @override_settings(SEO_INDEXING_ENABLED=False)
+    def test_robots_blocks_nonproduction_environments(self):
+        response = self.client.get(reverse("robots_txt"))
+
+        self.assertEqual(response.content.decode(), "User-agent: *\nDisallow: /\n")
+
+    @override_settings(SEO_INDEXING_ENABLED=True, SITE_URL="https://sklepzdoniczkami.pl")
+    def test_sitemap_contains_canonical_public_catalog_urls(self):
+        category = Category.objects.create(name="Rośliny", slug="rosliny")
+        Product.objects.create(
+            category=category,
+            name="Monstera",
+            slug="monstera-deliciosa",
+            description="Roślina doniczkowa do domu.",
+            price=Decimal("49.90"),
+            stock=0,
+            is_active=True,
+        )
+        Product.objects.create(
+            category=category,
+            name="Ukryty produkt",
+            slug="ukryty-produkt",
+            price=Decimal("20.00"),
+            stock=0,
+            is_active=False,
+        )
+
+        response = self.client.get(reverse("sitemap_xml"))
+        xml = response.content.decode()
+
+        self.assertEqual(response["Content-Type"], "application/xml; charset=utf-8")
+        self.assertIn("https://sklepzdoniczkami.pl/", xml)
+        self.assertIn("https://sklepzdoniczkami.pl/category/rosliny/", xml)
+        self.assertIn("https://sklepzdoniczkami.pl/product/monstera-deliciosa/", xml)
+        self.assertNotIn("ukryty-produkt", xml)
+        self.assertNotIn("checkout", xml)
+
+    @override_settings(SEO_INDEXING_ENABLED=False)
+    def test_nonproduction_sitemap_is_empty(self):
+        response = self.client.get(reverse("sitemap_xml"))
+        self.assertNotIn("sklepzdoniczkami.pl", response.content.decode())
+        self.assertNotIn("<loc>", response.content.decode())
+
+    @override_settings(SEO_INDEXING_ENABLED=True, SITE_URL="https://sklepzdoniczkami.pl")
+    def test_homepage_has_canonical_social_and_search_metadata(self):
+        response = self.client.get(reverse("sklepzdoniczkami:home"))
+
+        self.assertContains(
+            response,
+            '<link rel="canonical" href="https://sklepzdoniczkami.pl/">',
+            html=True,
+        )
+        self.assertContains(response, 'name="robots" content="index,follow"')
+        self.assertContains(response, 'property="og:title"')
+        self.assertContains(response, 'type="application/ld+json"')
+
+    @override_settings(SEO_INDEXING_ENABLED=False)
+    def test_nonproduction_pages_are_not_indexable(self):
+        response = self.client.get(reverse("sklepzdoniczkami:home"))
+        self.assertContains(response, 'name="robots" content="noindex,nofollow"')
+
+    def test_order_confirmation_is_never_indexable(self):
+        order = Order.objects.create(
+            first_name="Anna",
+            last_name="Kowalska",
+            email="anna@example.com",
+            address="ul. Zielona 1",
+            city="Warszawa",
+            postal_code="00-001",
+            shipping_method="courier",
+            shipping_cost=Decimal("19.99"),
+        )
+        response = self.client.get(
+            reverse(
+                "sklepzdoniczkami:checkout_success",
+                kwargs={"order_token": make_order_access_token(order)},
+            )
+        )
+        self.assertContains(response, 'name="robots" content="noindex,nofollow"')
+
+
 class PreprodSeedCommandTests(TestCase):
     @override_settings(APP_ENV="development")
     def test_seed_command_refuses_to_run_outside_preprod(self):
@@ -61,14 +156,42 @@ class PreprodSeedCommandTests(TestCase):
 
     @override_settings(APP_ENV="preprod")
     def test_seed_command_creates_only_idempotent_synthetic_catalogue(self):
+        legacy_category = Category.objects.create(
+            name="Doniczki — preprod",
+            slug="preprod-doniczki",
+        )
+        legacy_product = Product.objects.create(
+            category=legacy_category,
+            name="Monstera deliciosa — test",
+            slug="preprod-monstera-deliciosa",
+            description="Syntetyczny produkt demonstracyjny.",
+            price=Decimal("49.90"),
+            stock=12,
+            is_active=True,
+        )
         call_command("seed_preprod_data", verbosity=0)
         call_command("seed_preprod_data", verbosity=0)
 
-        self.assertEqual(Category.objects.filter(slug__startswith="preprod-").count(), 2)
-        self.assertEqual(Product.objects.filter(slug__startswith="preprod-").count(), 3)
+        self.assertEqual(Category.objects.filter(slug__startswith="preprod-").count(), 0)
+        self.assertEqual(Product.objects.filter(slug__startswith="preprod-").count(), 0)
+        self.assertEqual(Category.objects.count(), 2)
+        self.assertEqual(
+            Product.objects.filter(
+                slug__in=(
+                    "monstera-deliciosa",
+                    "epipremnum-zlociste",
+                    "doniczka-ceramiczna",
+                )
+            ).count(),
+            3,
+        )
         self.assertFalse(get_user_model().objects.exists())
         self.assertFalse(Order.objects.exists())
-        product = Product.objects.get(slug="preprod-monstera-deliciosa")
+        product = Product.objects.get(slug="monstera-deliciosa")
+        self.assertEqual(product.pk, legacy_product.pk)
+        self.assertEqual(product.name, "Monstera deliciosa")
+        self.assertEqual(product.stock, 12)
+        self.assertEqual(product.price, Decimal("49.90"))
         self.assertEqual(
             product.image,
             "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
@@ -157,8 +280,8 @@ class ProductionPreviewCatalogCommandTests(TestCase):
             with self.assertRaisesMessage(CommandError, "APP_ENV=production"):
                 call_command("seed_production_preview_catalog", confirm_production_preview=True)
 
-        self.assertFalse(Category.objects.filter(slug__startswith="preprod-").exists())
-        self.assertFalse(Product.objects.filter(slug__startswith="preprod-").exists())
+        self.assertFalse(Category.objects.filter(slug="rosliny-zielone").exists())
+        self.assertFalse(Product.objects.filter(slug="monstera-deliciosa").exists())
 
     @override_settings(APP_ENV="production")
     def test_preview_command_requires_explicit_confirmation(self):
@@ -166,11 +289,24 @@ class ProductionPreviewCatalogCommandTests(TestCase):
             with self.assertRaisesMessage(CommandError, "--confirm-production-preview"):
                 call_command("seed_production_preview_catalog")
 
-        self.assertFalse(Category.objects.filter(slug__startswith="preprod-").exists())
-        self.assertFalse(Product.objects.filter(slug__startswith="preprod-").exists())
+        self.assertFalse(Category.objects.filter(slug="rosliny-zielone").exists())
+        self.assertFalse(Product.objects.filter(slug="monstera-deliciosa").exists())
 
     @override_settings(APP_ENV="production")
     def test_preview_catalog_is_idempotent_and_never_sellable(self):
+        legacy_category = Category.objects.create(
+            name="Rośliny zielone",
+            slug="preprod-rosliny-zielone",
+        )
+        legacy_product = Product.objects.create(
+            category=legacy_category,
+            name="Monstera deliciosa — test",
+            slug="preprod-monstera-deliciosa",
+            description="Syntetyczny produkt demonstracyjny.",
+            price=Decimal("49.90"),
+            stock=0,
+            is_active=True,
+        )
         with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
             call_command(
                 "seed_production_preview_catalog",
@@ -183,18 +319,48 @@ class ProductionPreviewCatalogCommandTests(TestCase):
                 verbosity=0,
             )
 
-        products = Product.objects.filter(slug__startswith="preprod-")
+        products = Product.objects.filter(
+            slug__in=("monstera-deliciosa", "epipremnum-zlociste", "doniczka-ceramiczna")
+        )
         self.assertEqual(products.count(), 3)
         self.assertEqual(products.filter(stock=0, is_active=True).count(), 3)
         self.assertEqual(products.exclude(image="").count(), 3)
+        monstera = Product.objects.get(slug="monstera-deliciosa")
+        self.assertEqual(monstera.pk, legacy_product.pk)
+        self.assertEqual(monstera.price, Decimal("49.90"))
+        self.assertEqual(monstera.name, "Monstera deliciosa")
         self.assertFalse(Order.objects.exists())
-        self.assertContains(
-            self.client.get(reverse("sklepzdoniczkami:home")),
-            "Monstera deliciosa — test",
+        homepage = self.client.get(reverse("sklepzdoniczkami:home"))
+        self.assertContains(homepage, "Monstera deliciosa")
+        self.assertNotContains(homepage, "test")
+        self.assertNotContains(homepage, "Syntetyczna")
+        self.assertNotContains(homepage, "49.90")
+        detail_url = reverse("sklepzdoniczkami:product", args=["monstera-deliciosa"])
+        detail = self.client.get(detail_url)
+        self.assertContains(detail, "Obecnie niedostępny")
+        self.assertNotContains(detail, "test")
+        self.assertNotContains(detail, "49.90")
+        self.assertNotContains(detail, "/cart/add/")
+        legacy_url = reverse(
+            "sklepzdoniczkami:product",
+            args=["preprod-monstera-deliciosa"],
         )
-        self.assertContains(
-            self.client.get(reverse("sklepzdoniczkami:product", args=["preprod-monstera-deliciosa"])),
-            "Chwilowo niedostępny",
+        response = self.client.get(legacy_url)
+        self.assertRedirects(response, detail_url, status_code=301, fetch_redirect_response=False)
+        legacy_category_url = reverse(
+            "sklepzdoniczkami:category",
+            args=["preprod-rosliny-zielone"],
+        )
+        category_url = reverse(
+            "sklepzdoniczkami:category",
+            args=["rosliny-zielone"],
+        )
+        category_response = self.client.get(legacy_category_url)
+        self.assertRedirects(
+            category_response,
+            category_url,
+            status_code=301,
+            fetch_redirect_response=False,
         )
 
     @override_settings(APP_ENV="production")
@@ -205,11 +371,11 @@ class ProductionPreviewCatalogCommandTests(TestCase):
                 confirm_production_preview=True,
                 verbosity=0,
             )
-            product = Product.objects.get(slug="preprod-monstera-deliciosa")
+            product = Product.objects.get(slug="monstera-deliciosa")
             product.stock = 1
             product.save(update_fields=["stock"])
 
-            with self.assertRaisesMessage(CommandError, "conflicting data"):
+            with self.assertRaisesMessage(CommandError, "has nonzero stock"):
                 call_command(
                     "seed_production_preview_catalog",
                     confirm_production_preview=True,
@@ -218,6 +384,120 @@ class ProductionPreviewCatalogCommandTests(TestCase):
 
         product.refresh_from_db()
         self.assertEqual(product.stock, 1)
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_to_overwrite_unrecognized_zero_stock_product(self):
+        category = Category.objects.create(name="Rośliny", slug="rosliny-zielone")
+        product = Product.objects.create(
+            category=category,
+            name="Roślina właściciela",
+            slug="monstera-deliciosa",
+            description="Oryginalny opis produktu.",
+            price=Decimal("79.90"),
+            stock=0,
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "has conflicting data"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        product.refresh_from_db()
+        self.assertEqual(product.name, "Roślina właściciela")
+        self.assertEqual(product.description, "Oryginalny opis produktu.")
+        self.assertEqual(product.price, Decimal("79.90"))
+        self.assertEqual(product.slug, "monstera-deliciosa")
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_duplicate_canonical_and_legacy_products(self):
+        category = Category.objects.create(name="Rośliny zielone", slug="rosliny-zielone")
+        legacy_category = Category.objects.create(
+            name="Rośliny zielone — preprod",
+            slug="preprod-rosliny-zielone",
+        )
+        canonical_product = Product.objects.create(
+            category=category,
+            name="Monstera deliciosa",
+            slug="monstera-deliciosa",
+            description=(
+                "Monstera deliciosa o charakterystycznych, głęboko powcinanych "
+                "liściach. Wyrazisty akcent do jasnych i przestronnych wnętrz."
+            ),
+            price=Decimal("49.90"),
+            stock=0,
+            image="/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+        )
+        legacy_product = Product.objects.create(
+            category=legacy_category,
+            name="Monstera deliciosa — test",
+            slug="preprod-monstera-deliciosa",
+            description="Syntetyczny produkt demonstracyjny.",
+            price=Decimal("49.90"),
+            stock=0,
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "Both canonical and legacy"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        canonical_product.refresh_from_db()
+        legacy_product.refresh_from_db()
+        self.assertEqual(canonical_product.name, "Monstera deliciosa")
+        self.assertEqual(legacy_product.slug, "preprod-monstera-deliciosa")
+        self.assertEqual(legacy_product.category_id, legacy_category.pk)
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_to_rename_conflicting_category(self):
+        category = Category.objects.create(
+            name="Kolekcja właściciela",
+            slug="rosliny-zielone",
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "has conflicting data"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        category.refresh_from_db()
+        self.assertEqual(category.name, "Kolekcja właściciela")
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_legacy_category_with_unrelated_products(self):
+        category = Category.objects.create(
+            name="Rośliny — preprod",
+            slug="preprod-rosliny-zielone",
+        )
+        product = Product.objects.create(
+            category=category,
+            name="Produkt właściciela",
+            slug="produkt-wlasciciela",
+            description="Produkt spoza katalogu podglądowego.",
+            price=Decimal("59.90"),
+            stock=0,
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "contains unrelated products"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        category.refresh_from_db()
+        product.refresh_from_db()
+        self.assertEqual(category.slug, "preprod-rosliny-zielone")
+        self.assertEqual(product.category_id, category.pk)
 
 
 class FirstAdminBootstrapCommandTests(TestCase):
@@ -496,11 +776,11 @@ class SampleProductCommandTests(TestCase):
             )
 
             response = self.client.get(reverse("sklepzdoniczkami:products"))
-            self.assertContains(response, "Wybierz materiał")
+            self.assertContains(response, "Wszystkie produkty")
             self.assertContains(response, "Ceramiczne")
             self.assertContains(response, "Plastikowe")
             self.assertContains(response, "Cementowe")
-            self.assertContains(response, "2 pozycji")
+            self.assertContains(response, "2 produkty")
 
             plastic_category = Category.objects.get(slug="plastikowe")
             filtered_response = self.client.get(plastic_category.get_absolute_url())

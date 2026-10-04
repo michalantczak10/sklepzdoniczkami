@@ -38,6 +38,21 @@ ELEVATED_ROLE_NAMES = {
 class Command(BaseCommand):
     help = "Adds the synthetic preview catalogue to production with zero stock."
 
+    @staticmethod
+    def validate_legacy_category(category, sample):
+        sample_product_slugs = {
+            slug
+            for product in sample["products"]
+            for slug in (product["slug"], product.get("legacy_slug"))
+            if slug
+        }
+        if Product.objects.filter(category=category).exclude(
+            slug__in=sample_product_slugs
+        ).exists():
+            raise CommandError(
+                f"Legacy category {category.slug} contains unrelated products."
+            )
+
     def add_arguments(self, parser):
         parser.add_argument("--confirm-production-preview", action="store_true")
 
@@ -131,39 +146,119 @@ class Command(BaseCommand):
         created_products = 0
         with transaction.atomic():
             for sample in SAMPLE_CATALOG:
-                category, category_created = Category.objects.get_or_create(
-                    slug=sample["category"]["slug"],
-                    defaults={"name": sample["category"]["name"]},
-                )
-                if not category_created and category.name != sample["category"]["name"]:
-                    raise CommandError(
-                        f"Production category {category.slug} already has different data."
+                category_data = sample["category"]
+                category = Category.objects.filter(slug=category_data["slug"]).first()
+                legacy_category = Category.objects.filter(
+                    slug=category_data.get("legacy_slug")
+                ).first()
+                if category is None:
+                    category = legacy_category
+                if category is not None and category.slug == category_data["slug"]:
+                    if category.name != category_data["name"]:
+                        raise CommandError(
+                            f"Production category {category.slug} has conflicting data."
+                        )
+                elif category is not None:
+                    self.validate_legacy_category(category, sample)
+                if (
+                    category is not None
+                    and legacy_category is not None
+                    and legacy_category.pk != category.pk
+                ):
+                    self.validate_legacy_category(legacy_category, sample)
+                    sample_product_slugs = {
+                        slug
+                        for product in sample["products"]
+                        for slug in (product["slug"], product.get("legacy_slug"))
+                        if slug
+                    }
+                    Product.objects.filter(
+                        category=legacy_category,
+                        slug__in=sample_product_slugs,
+                    ).update(category=category)
+                    legacy_category.delete()
+                if category is None:
+                    category = Category.objects.create(
+                        name=category_data["name"],
+                        slug=category_data["slug"],
                     )
-                created_categories += int(category_created)
+                    created_categories += 1
+                else:
+                    category.name = category_data["name"]
+                    category.slug = category_data["slug"]
+                    category.save(update_fields=["name", "slug"])
 
                 for product_data in sample["products"]:
+                    product = Product.objects.filter(slug=product_data["slug"]).first()
+                    legacy_product = Product.objects.filter(
+                        slug=product_data.get("legacy_slug")
+                    ).first()
+                    if product is not None and legacy_product is not None:
+                        raise CommandError(
+                            "Both canonical and legacy production products exist for "
+                            f"{product_data['slug']}."
+                        )
+                    if product is None:
+                        product = legacy_product
                     preview_data = {
-                        **product_data,
+                        key: value
+                        for key, value in product_data.items()
+                        if key != "legacy_slug"
+                    }
+                    preview_data.update({
                         "category": category,
                         "stock": 0,
                         "is_active": True,
-                    }
-                    product, product_created = Product.objects.get_or_create(
-                        slug=product_data["slug"],
-                        defaults=preview_data,
-                    )
-                    if not product_created:
-                        conflicts = (
-                            field
-                            for field, value in preview_data.items()
-                            if getattr(product, field) != value
+                    })
+                    if product is None:
+                        Product.objects.create(**preview_data)
+                        created_products += 1
+                        continue
+
+                    if (
+                        product.slug != product_data["slug"]
+                        and Product.objects.filter(slug=product_data["slug"]).exists()
+                    ):
+                        raise CommandError(
+                            f"Production product slug {product_data['slug']} "
+                            "already exists."
                         )
-                        if next(conflicts, None) is not None or product.stock != 0:
-                            raise CommandError(
-                                f"Production product {product.slug} has conflicting data; "
-                                "no existing product was changed."
-                            )
-                    created_products += int(product_created)
+                    if product.stock != 0:
+                        raise CommandError(
+                            f"Production product {product.slug} has nonzero stock; "
+                            "it was not changed."
+                        )
+                    expected = {
+                        "category": category,
+                        "name": product_data["name"],
+                        "slug": product_data["slug"],
+                        "description": product_data["description"],
+                        "image": product_data["image"],
+                        "is_active": True,
+                        "stock": 0,
+                    }
+                    if product.slug == product_data["slug"] and any(
+                        getattr(product, field) != value
+                        for field, value in expected.items()
+                    ):
+                        raise CommandError(
+                            f"Production product {product.slug} has conflicting data; "
+                            "it was not changed."
+                        )
+                    for field, value in expected.items():
+                        if getattr(product, field) != value:
+                            setattr(product, field, value)
+                    product.save(
+                        update_fields=[
+                            "category",
+                            "name",
+                            "slug",
+                            "description",
+                            "image",
+                            "is_active",
+                            "stock",
+                        ]
+                    )
 
         self.stdout.write(
             self.style.SUCCESS(

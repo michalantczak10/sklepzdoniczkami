@@ -1,17 +1,21 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}Logowanie{% endblock %}
+{% block robots_meta %}<meta name="robots" content="noindex,nofollow">{% endblock %}
 
 {% block content %}
-    <h1>Zaloguj się</h1>
-    <div class="card" style="max-width: 420px;">
-        <form method="post">
-            {% csrf_token %}
-            {{ form.as_p }}
-            <div class="actions">
-                <button class="btn" type="submit">Zaloguj</button>
-            </div>
-        </form>
-        <p>Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
+    <div class="container content-page account-page">
+        <div class="card account-card">
+            <span class="eyebrow">Witaj ponownie</span>
+            <h1>Zaloguj się</h1>
+            <form method="post">
+                {% csrf_token %}
+                {{ form.as_p }}
+                <div class="actions">
+                    <button class="btn" type="submit">Zaloguj</button>
+                </div>
+            </form>
+            <p>Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
+        </div>
     </div>
 {% endblock %}

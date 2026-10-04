@@ -96,6 +96,21 @@ class ProductListView(ListView):
             queryset = queryset.filter(category__slug=category_slug)
         return queryset.order_by("name")
 
+    def get(self, request, *args, **kwargs):
+        category_aliases = {
+            sample["category"].get("legacy_slug"): sample["category"]["slug"]
+            for sample in SAMPLE_CATALOG
+            if sample["category"].get("legacy_slug")
+        }
+        category_slug = kwargs.get("slug")
+        if category_slug in category_aliases:
+            return redirect(
+                "sklepzdoniczkami:category",
+                slug=category_aliases[category_slug],
+                permanent=True,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_category"] = Category.objects.filter(slug=self.kwargs.get("slug")).first()
@@ -108,7 +123,9 @@ class ProductListView(ListView):
         card_details = {
             sample["category"]["slug"]: {
                 "image": sample["category_image"],
-                "description": "Syntetyczna kolekcja demonstracyjna.",
+                "description": sample["category"].get(
+                    "description", "Rośliny i dodatki, które wnoszą zieleń do wnętrza."
+                ),
             }
             for sample in SAMPLE_CATALOG
         }
@@ -147,6 +164,22 @@ class ProductDetailView(DetailView):
     model = Product
     template_name = "sklepzdoniczkami/product_detail.html"
     context_object_name = "product"
+
+    def get(self, request, *args, **kwargs):
+        product_aliases = {
+            product.get("legacy_slug"): product["slug"]
+            for sample in SAMPLE_CATALOG
+            for product in sample["products"]
+            if product.get("legacy_slug")
+        }
+        product_slug = kwargs.get("slug")
+        if product_slug in product_aliases:
+            return redirect(
+                "sklepzdoniczkami:product",
+                slug=product_aliases[product_slug],
+                permanent=True,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
         return Product.objects.filter(is_active=True).select_related("category")

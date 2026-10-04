@@ -90,6 +90,10 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
 ).split(',')
 
 SITE_NAME = os.environ.get('SITE_NAME', 'Sklepzdoniczkami')
+SITE_URL = os.environ.get(
+    'SITE_URL', 'https://sklepzdoniczkami.pl'
+).rstrip('/')
+SEO_INDEXING_ENABLED = APP_ENV == 'production'
 
 # When running behind Render's proxy, requests arrive over HTTP internally but
 # were made over HTTPS by the client. This header tells Django to trust that.
@@ -189,6 +193,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'config.context_processors.seo_globals',
             ],
         },
     },

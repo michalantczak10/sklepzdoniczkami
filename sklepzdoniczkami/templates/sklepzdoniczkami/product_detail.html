@@ -1,7 +1,13 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 {% load static %}
 
-{% block title %}{{ product.name }}{% endblock %}
+{% block title %}{{ product.name }} | Sklepzdoniczkami{% endblock %}
+{% block meta_description %}{{ product.description|truncatechars:155 }}{% endblock %}
+{% block og_title %}{{ product.name }} | Sklepzdoniczkami{% endblock %}
+{% block og_description %}{{ product.description|truncatechars:200 }}{% endblock %}
+{% block canonical_url %}{{ site_url }}{{ product.get_absolute_url }}{% endblock %}
+{% block og_url %}{{ site_url }}{{ product.get_absolute_url }}{% endblock %}
+{% block og_type %}product{% endblock %}
 
 {% block content %}
     <div class="container product-page">
@@ -14,26 +20,28 @@
             <div class="detail-art">
                 <span class="product-art-orbit"></span>
                 {% if product.image %}
-                    <img class="product-image" src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
+                    <img class="product-image" src="{{ product.image }}" alt="{{ product.name }}" fetchpriority="high" decoding="async">
                 {% else %}
                     <img class="product-image" src="{% static 'sklepzdoniczkami/img/pot-placeholder.svg' %}" alt="{{ product.name }}" loading="lazy">
                 {% endif %}
                 <span class="art-category">{{ product.category.name }}</span>
             </div>
             <section class="detail-copy">
-                <span class="eyebrow">Poznaj naszą kolekcję doniczek</span>
+                <span class="eyebrow">Rośliny i dodatki do wnętrz</span>
                 <h1>{{ product.name }}</h1>
                 <p>{{ product.description|default:"Starannie wybrana doniczka do domu, na balkon lub taras." }}</p>
                 <a class="text-link" href="{{ product.category.get_absolute_url }}">Zobacz więcej z kategorii {{ product.category.name }} →</a>
             </section>
-            <aside class="purchase-card">
-                <span class="purchase-label">Cena</span>
-                <div class="detail-price">{{ product.price }} <small>zł</small></div>
+            <aside class="purchase-card{% if not product.stock %} is-unavailable{% endif %}">
+                {% if product.stock %}
+                    <span class="purchase-label">Cena</span>
+                    <div class="detail-price">{{ product.price }} <small>zł</small></div>
+                {% endif %}
                 <div class="availability">
                     {% if product.stock %}
                         <span class="stock-dot"></span> Dostępny — {{ product.stock }} szt.
                     {% else %}
-                        <span class="stock-dot out-of-stock"></span> Chwilowo niedostępny
+                        <span class="stock-dot out-of-stock"></span> Obecnie niedostępny
                     {% endif %}
                 </div>
                 {% if product.stock %}
@@ -42,9 +50,11 @@
                         <button class="btn purchase-button" type="submit">Dodaj do koszyka <span aria-hidden="true">→</span></button>
                     </form>
                 {% else %}
-                    <button class="btn purchase-button" type="button" disabled>Niedostępny</button>
+                    <p class="unavailable-message">Ten produkt nie jest obecnie dostępny.</p>
                 {% endif %}
-                <div class="purchase-note"><span aria-hidden="true">✳</span> Bezpieczne zakupy i staranne pakowanie</div>
+                {% if product.stock %}
+                    <div class="purchase-note"><span aria-hidden="true">✳</span> Bezpieczne zakupy i staranne pakowanie</div>
+                {% endif %}
             </aside>
         </div>
     </div>
@@ -68,7 +78,10 @@
                     </a>
                     <div class="product-info">
                         <h3><a href="{{ item.get_absolute_url }}">{{ item.name }}</a></h3>
-                        <div class="product-buy-row"><span class="price">{{ item.price }} <small>zł</small></span><a class="text-link" href="{{ item.get_absolute_url }}">Zobacz →</a></div>
+                        <div class="product-buy-row">
+                            {% if item.stock %}<span class="price">{{ item.price }} <small>zł</small></span>{% else %}<span class="unavailable">Obecnie niedostępny</span>{% endif %}
+                            <a class="text-link" href="{{ item.get_absolute_url }}">Zobacz <span aria-hidden="true">→</span></a>
+                        </div>
                     </div>
                 </article>
             {% endfor %}
