@@ -1,9 +1,31 @@
+import logging
+import smtplib
+
 from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import PasswordResetForm
 from django.template.response import TemplateResponse
 
 from .catalog import public_categories
+
+
+logger = logging.getLogger(__name__)
+
+
+class PasswordResetEmailDeliveryMixin:
+    def form_valid(self, form):
+        try:
+            return super().form_valid(form)
+        except (OSError, smtplib.SMTPException):
+            logger.exception("Password reset email delivery failed")
+            form.add_error(
+                None,
+                "Nie udało się wysłać wiadomości z linkiem resetującym. "
+                "Spróbuj ponownie później.",
+            )
+            response = self.form_invalid(form)
+            response.status_code = 503
+            return response
 
 
 class AdminPasswordResetForm(PasswordResetForm):
@@ -15,7 +37,10 @@ class AdminPasswordResetForm(PasswordResetForm):
         )
 
 
-class AdminPasswordResetView(auth_views.PasswordResetView):
+class AdminPasswordResetView(
+    PasswordResetEmailDeliveryMixin,
+    auth_views.PasswordResetView,
+):
     def dispatch(self, request, *args, **kwargs):
         if not settings.ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED:
             return TemplateResponse(
@@ -46,6 +71,7 @@ class StorefrontPasswordResetContextMixin:
 
 
 class StorefrontPasswordResetView(
+    PasswordResetEmailDeliveryMixin,
     StorefrontPasswordResetContextMixin,
     auth_views.PasswordResetView,
 ):

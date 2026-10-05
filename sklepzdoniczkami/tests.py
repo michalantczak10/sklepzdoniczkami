@@ -1024,6 +1024,36 @@ class ProductCatalogTests(TestCase):
     @override_settings(
         PASSWORD_RESET_EMAIL_CONFIGURED=True,
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    @patch(
+        "sklepzdoniczkami.forms.StorefrontPasswordResetForm.send_mail",
+        side_effect=TimeoutError,
+    )
+    def test_storefront_password_reset_shows_service_error_when_email_times_out(
+        self,
+        _send_mail,
+    ):
+        get_user_model().objects.create_user(
+            username="customer-reset-timeout",
+            email="customer-timeout@example.com",
+            password="Customer-Password-9481!",
+        )
+
+        response = self.client.post(
+            reverse("sklepzdoniczkami:password_reset"),
+            {"email": "customer-timeout@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(
+            response,
+            "Nie udało się wysłać wiadomości z linkiem resetującym",
+            status_code=503,
+        )
+
+    @override_settings(
+        PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         DEFAULT_FROM_EMAIL="no-reply@example.com",
     )
     def test_storefront_password_reset_changes_password(self):
@@ -1118,6 +1148,36 @@ class ProductCatalogTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertContains(response, "Wysyłka e-maili", status_code=503)
+
+    @override_settings(
+        ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    @patch(
+        "sklepzdoniczkami.auth_views.AdminPasswordResetForm.send_mail",
+        side_effect=TimeoutError,
+    )
+    def test_admin_password_reset_shows_service_error_when_email_times_out(
+        self,
+        _send_mail,
+    ):
+        get_user_model().objects.create_superuser(
+            username="shop-admin-timeout",
+            email="admin-timeout@example.com",
+            password="Admin-Password-9481!",
+        )
+
+        response = self.client.post(
+            reverse("admin_password_reset"),
+            {"email": "admin-timeout@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(
+            response,
+            "Nie udało się wysłać wiadomości z linkiem resetującym",
+            status_code=503,
+        )
 
     @override_settings(
         ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=True,
