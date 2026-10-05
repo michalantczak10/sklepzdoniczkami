@@ -4,7 +4,7 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.urls import reverse
 
-from .models import Category, Product
+from .catalog import public_categories, public_products
 
 
 def robots_txt(request):
@@ -35,13 +35,11 @@ def sitemap_xml(request):
         public_paths.append(reverse("sklepzdoniczkami:home"))
         public_paths.extend(
             reverse("sklepzdoniczkami:category", kwargs={"slug": slug})
-            for slug in Category.objects.filter(products__is_active=True)
-            .values_list("slug", flat=True)
-            .distinct()
+            for slug in public_categories().values_list("slug", flat=True)
         )
         public_paths.extend(
             reverse("sklepzdoniczkami:product", kwargs={"slug": slug})
-            for slug in Product.objects.filter(is_active=True).values_list("slug", flat=True)
+            for slug in public_products().values_list("slug", flat=True)
         )
 
     for path in public_paths:

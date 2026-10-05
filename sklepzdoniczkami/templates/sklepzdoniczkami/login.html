@@ -10,12 +10,21 @@
             <h1>Zaloguj się</h1>
             <form method="post">
                 {% csrf_token %}
-                {{ form.as_p }}
+                {{ form.non_field_errors }}
+                {% for field in form %}
+                    <div class="form-field account-form-field">
+                        {{ field.label_tag }}
+                        {{ field }}
+                        {% for error in field.errors %}
+                            <small class="form-error">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
                 <div class="actions">
-                    <button class="btn" type="submit">Zaloguj</button>
+                    <button class="btn" type="submit">Zaloguj się</button>
                 </div>
             </form>
-            <p>Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
+            <p class="account-switch">Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
         </div>
     </div>
 {% endblock %}
