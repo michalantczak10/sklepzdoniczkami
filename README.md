@@ -74,9 +74,9 @@ pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
 - `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
   Artefakty są przechowywane przez 90 dni.
 - `bootstrap-production-admin.yml` pozwala jednorazowo utworzyć pierwszego
-  administratora produkcji. Read-only preflight można uruchomić z `main`;
-  pierwsze utworzenie wymaga tymczasowego sekretu w GitHub Environment
-  `production` (zostało już wykonane).
+  administratora produkcji oraz bezpiecznie ustawić nowe hasło jedynego
+  administratora. Read-only preflight można uruchomić z `main`; pierwsze
+  utworzenie zostało już wykonane.
 - `production-preview-catalog.yml` dodaje na wyraźne żądanie katalog
   demonstracyjny do produkcji. Uruchamiaj go dopiero po wdrożeniu nowego kodu
   na Renderze; tworzone produkty mają stan 0, więc nie można ich kupić.
@@ -89,16 +89,28 @@ workflowem
 Jednorazowy sekret `INITIAL_ADMIN_PASSWORD` został po tym usunięty z GitHub
 Environment `production`. Tryb `preflight-only` pozostaje dostępny do
 odczytowego sprawdzenia połączenia i uprawnień. Nie uruchamiaj trybu tworzenia
-ponownie — workflow nie służy do resetowania hasła ani tworzenia kolejnych
-administratorów.
+ponownie — workflow odmawia utworzenia drugiego superużytkownika.
+
+Panel administracyjny produkcji jest pod adresem
+`https://sklepzdoniczkami.pl/admin/`. Loguje się do niego nazwą użytkownika
+i hasłem wybranymi podczas pierwszego uruchomienia workflow. Konto nie ma
+domyślnego loginu, a usuniętego hasła nie da się odzyskać. Po scaleniu zmian do `main`
+można ustawić nowe hasło przez Actions → **Bootstrap first production
+administrator**: dodaj tymczasowy sekret `RESET_ADMIN_PASSWORD` (co najmniej
+16 znaków) w GitHub Environment `production`, wybierz branch `main`, tryb
+`reset-existing-admin` i potwierdź `reset-existing-admin`. Po sukcesie log
+workflow pokaże nazwę użytkownika; usuń sekret z Environment i zachowaj nowe
+hasło w menedżerze haseł. Reset odmówi działania, jeżeli na produkcji nie ma
+dokładnie jednego superużytkownika. Nie wklejaj hasła do rozmowy ani do pola
+wejściowego workflow.
 
 Workflow sprawdza przypięty host, bazę `sklepzdoniczkami_prod` i ograniczoną
 rolę runtime, używając istniejącego sekretu `DATABASE_URL_PRODUCTION_WEB`
 w GitHub Environment `production`; nie kopiuj URL-a bazy do lokalnego `.env`
-ani do pola wejściowego workflow. Odmówi działania poza produkcją, gdy istnieje
-już superuser, gdy hasło jest słabe albo dane logowania nie przechodzą
-walidacji. Nie zmienia konfiguracji Stripe ani Rendera i nie uruchamia
-płatności.
+ani do pola wejściowego workflow. Tworzenie odmówi działania, gdy superuser
+już istnieje; reset sprawdza, że istnieje dokładnie jeden. Oba tryby odrzucają
+słabe hasła i dane nieprzechodzące walidacji. Workflow nie zmienia konfiguracji
+Stripe ani Rendera i nie uruchamia płatności.
 
 ## Oddzielne środowiska i bazy danych
 

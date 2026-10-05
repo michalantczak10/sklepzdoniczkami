@@ -1,10 +1,10 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 {% load static %}
 
-{% block title %}{% if active_category %}{{ active_category.name }}{% else %}Rośliny i doniczki do domu{% endif %} | Sklepzdoniczkami{% endblock %}
-{% block meta_description %}{% if active_category %}Odkryj kolekcję: {{ active_category.name|lower }}. Znajdź rośliny i doniczki, które pasują do Twojego wnętrza.{% else %}Poznaj rośliny doniczkowe i doniczki do domu. Znajdź zielone dodatki, które podkreślą charakter Twojej przestrzeni.{% endif %}{% endblock %}
-{% block og_title %}{% if active_category %}{{ active_category.name }} | Sklepzdoniczkami{% else %}Rośliny i doniczki do domu | Sklepzdoniczkami{% endif %}{% endblock %}
-{% block og_description %}{% if active_category %}Odkryj kolekcję {{ active_category.name|lower }} w Sklepzdoniczkami.{% else %}Rośliny doniczkowe i doniczki do zielonych, przytulnych wnętrz.{% endif %}{% endblock %}
+{% block title %}{% if active_category %}{{ active_category.name }}{% else %}Doniczki do domu, na balkon i taras{% endif %} | Sklepzdoniczkami{% endblock %}
+{% block meta_description %}{% if active_category %}Odkryj kolekcję doniczek: {{ active_category.name|lower }}. Wybierz formę, która pasuje do Twojego wnętrza.{% else %}Poznaj doniczki do domu, na balkon i taras. Wybierz spośród ceramicznych, plastikowych i cementowych form.{% endif %}{% endblock %}
+{% block og_title %}{% if active_category %}{{ active_category.name }} | Sklepzdoniczkami{% else %}Doniczki do domu, na balkon i taras | Sklepzdoniczkami{% endif %}{% endblock %}
+{% block og_description %}{% if active_category %}Odkryj kolekcję doniczek {{ active_category.name|lower }} w Sklepzdoniczkami.{% else %}Doniczki do domu, na balkon i taras w różnych formach i materiałach.{% endif %}{% endblock %}
 {% block canonical_url %}{% if active_category %}{{ site_url }}{{ active_category.get_absolute_url }}{% else %}{{ site_url }}/{% endif %}{% endblock %}
 {% block og_url %}{% if active_category %}{{ site_url }}{{ active_category.get_absolute_url }}{% else %}{{ site_url }}/{% endif %}{% endblock %}
 {% block robots_meta %}<meta name="robots" content="{% if seo_indexing_enabled %}{% if search_query %}noindex,follow{% else %}index,follow{% endif %}{% else %}noindex,nofollow{% endif %}">{% endblock %}
@@ -14,11 +14,11 @@
         {% if not active_category and not search_query %}
             <section class="hero">
                 <div class="hero-copy">
-                    <span class="eyebrow"><span class="eyebrow-dot"></span> Rośliny i dodatki do wnętrz</span>
-                    <h1>Więcej zieleni.<br><em>Więcej domu.</em></h1>
-                    <p>Rośliny i doniczki, które pomagają stworzyć spokojną, pełną życia przestrzeń.</p>
+                    <span class="eyebrow"><span class="eyebrow-dot"></span> Doniczki do Twojego wnętrza</span>
+                    <h1>Forma, która<br><em>dopełnia dom.</em></h1>
+                    <p>Doniczki w różnych materiałach i rozmiarach — do domu, na balkon i taras.</p>
                     <a class="btn" href="#produkty">Odkryj kolekcję <span aria-hidden="true">→</span></a>
-                    <div class="hero-note"><span class="hero-note-icon">✳</span> Naturalne akcenty na co dzień.</div>
+                    <div class="hero-note"><span class="hero-note-icon">✳</span> Praktyczne formy, ponadczasowy styl.</div>
                 </div>
                 <div class="hero-art" aria-hidden="true">
                     <img src="{% static 'sklepzdoniczkami/img/products/pot-terracotta-3.jpg' %}" alt="" class="hero-image" fetchpriority="high" decoding="async">
@@ -26,9 +26,9 @@
             </section>
 
             <div class="benefits" aria-label="Nasze zalety">
-                <div><span class="benefit-icon">✿</span><span><strong>Dom pełen zieleni</strong><small>Rośliny, które ożywiają wnętrza</small></span></div>
-                <div><span class="benefit-icon">♧</span><span><strong>Piękne dopełnienie</strong><small>Doniczki w naturalnych formach</small></span></div>
-                <div><span class="benefit-icon">⌂</span><span><strong>Na każdą przestrzeń</strong><small>Zielone akcenty do domu i na balkon</small></span></div>
+                <div><span class="benefit-icon">◌</span><span><strong>Różne materiały</strong><small>Ceramiczne, plastikowe i cementowe</small></span></div>
+                <div><span class="benefit-icon">♧</span><span><strong>Do Twojej przestrzeni</strong><small>Doniczki do domu i na balkon</small></span></div>
+                <div><span class="benefit-icon">⌂</span><span><strong>Wiele zastosowań</strong><small>Wybierz rozmiar i formę dla siebie</small></span></div>
             </div>
         {% endif %}
 

@@ -12,12 +12,13 @@ on:
         required: false
         type: string
       mode:
-        description: Run a read-only production preflight or create the first administrator
+        description: Check production, create the first administrator, or reset its password
         required: true
         type: choice
         options:
           - preflight-only
           - create-first-admin
+          - reset-existing-admin
         default: preflight-only
       confirm_creation:
         description: Confirm one-time creation of the first production administrator
@@ -26,6 +27,14 @@ on:
         options:
           - do-not-run
           - create-first-admin
+        default: do-not-run
+      confirm_reset:
+        description: Confirm resetting the password of the only production administrator
+        required: true
+        type: choice
+        options:
+          - do-not-run
+          - reset-existing-admin
         default: do-not-run
 
 permissions:
@@ -44,9 +53,13 @@ jobs:
         (
           inputs.mode == 'create-first-admin' &&
           inputs.confirm_creation == 'create-first-admin'
+        ) ||
+        (
+          inputs.mode == 'reset-existing-admin' &&
+          inputs.confirm_reset == 'reset-existing-admin'
         )
       )
-    name: Create the first production administrator
+    name: Manage production administrator
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
@@ -58,6 +71,7 @@ jobs:
       SITE_NAME: Sklepzdoniczkami
       DATABASE_NAME_PRODUCTION: sklepzdoniczkami_prod
       PRODUCTION_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+      ADMIN_MODE: ${{ inputs.mode }}
 
     steps:
       - name: Check the temporary password secret
@@ -69,6 +83,18 @@ jobs:
           set -euo pipefail
           if [[ ${#INITIAL_ADMIN_PASSWORD} -lt 16 ]]; then
             echo "::error::Set a temporary INITIAL_ADMIN_PASSWORD secret (at least 16 characters) in the production environment."
+            exit 1
+          fi
+
+      - name: Check the temporary reset password secret
+        if: inputs.mode == 'reset-existing-admin'
+        env:
+          RESET_ADMIN_PASSWORD: ${{ secrets.RESET_ADMIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ${#RESET_ADMIN_PASSWORD} -lt 16 ]]; then
+            echo "::error::Set a temporary RESET_ADMIN_PASSWORD secret (at least 16 characters) in the production environment."
             exit 1
           fi
 
@@ -148,6 +174,7 @@ jobs:
                       "to_regclass('public.auth_user') IS NOT NULL, "
                       "has_table_privilege(current_user, 'public.auth_user', 'SELECT'), "
                       "has_table_privilege(current_user, 'public.auth_user', 'INSERT'), "
+                      "has_table_privilege(current_user, 'public.auth_user', 'UPDATE'), "
                       "has_sequence_privilege("
                       "current_user, pg_get_serial_sequence('public.auth_user', 'id'), 'USAGE') "
                       "FROM pg_roles WHERE rolname = current_user"
@@ -168,6 +195,7 @@ jobs:
               has_user_table,
               can_select_users,
               can_insert_users,
+              can_update_users,
               can_use_user_sequence,
           ) = row
           if database_name != "sklepzdoniczkami_prod":
@@ -194,6 +222,10 @@ jobs:
               and can_use_user_sequence
           ):
               raise SystemExit("Production runtime role cannot create an administrator.")
+          if os.environ["ADMIN_MODE"] == "reset-existing-admin" and not can_update_users:
+              raise SystemExit(
+                  "Production runtime role cannot reset the administrator password."
+              )
           PY
 
       - name: Record successful read-only preflight
@@ -222,3 +254,15 @@ jobs:
             echo "The first production administrator was created."
             echo "Store the chosen password in a password manager, then remove INITIAL_ADMIN_PASSWORD from the GitHub production environment."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reset the existing administrator password
+        if: inputs.mode == 'reset-existing-admin'
+        env:
+          DATABASE_URL_PRODUCTION: ${{ secrets.DATABASE_URL_PRODUCTION_WEB }}
+          RESET_ADMIN_PASSWORD: ${{ secrets.RESET_ADMIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python manage.py reset_production_admin_password \
+            --confirm-production-database sklepzdoniczkami_prod
+          echo "The production administrator password was reset. The command output identifies the account username." >> "$GITHUB_STEP_SUMMARY"
