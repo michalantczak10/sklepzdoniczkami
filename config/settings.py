@@ -21,7 +21,8 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_ENV_FROM_ENV = os.environ.get('APP_ENV')
-load_dotenv(BASE_DIR / '.env')
+DOTENV_PATH = Path(os.environ.get('DJANGO_ENV_FILE', BASE_DIR / '.env'))
+load_dotenv(DOTENV_PATH, override=bool(os.environ.get('DJANGO_ENV_FILE')))
 
 def env_value(name, default=None):
     return os.environ.get(f'{name}_{ENV_SUFFIX}', default)
@@ -262,7 +263,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media (user-uploaded files)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', BASE_DIR / 'media'))
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
