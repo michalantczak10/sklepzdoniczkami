@@ -107,7 +107,10 @@ wejściowego workflow.
 Na ekranie logowania administratora i klienta dostępny jest też reset przez e-mail.
 Ustaw w ustawieniach Rendera SMTP `EMAIL_HOST`, `EMAIL_HOST_USER` i
 `EMAIL_HOST_PASSWORD` (oraz potwierdź poprawny `EMAIL_PORT`, TLS i adres
-`DEFAULT_FROM_EMAIL` zgodny z konfiguracją dostawcy poczty). Bez skonfigurowanej
+`DEFAULT_FROM_EMAIL` zgodny z konfiguracją dostawcy poczty). Opcjonalnie
+ustaw `EMAIL_TIMEOUT` w sekundach (domyślnie 10). Gdy dostawca poczty nie
+odpowiada, formularz pokaże informację o niedostępności zamiast błędu serwera.
+Bez skonfigurowanej
 poczty strona resetu jawnie poinformuje, że usługa jest niedostępna — nie
 wypisze jednorazowego linku w logach. Formularze zawsze pokazują neutralną
 odpowiedź, niezależnie od tego, czy adres pasuje do aktywnego konta. Formularz
