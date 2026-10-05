@@ -22,3 +22,5 @@ backup.dump*
 db-backup-files-*.tgz
 
 # local dev sqlite DB
+media/
+session-artifacts/
