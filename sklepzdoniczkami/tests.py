@@ -1073,7 +1073,7 @@ class ProductCatalogTests(TestCase):
     )
     def test_storefront_password_reset_supports_legacy_email_username(self):
         legacy_user = get_user_model().objects.create_user(
-            username="legacy@example.com",
+            username="Legacy@example.com",
             email="",
             password="Old-Customer-Password-239!",
         )
@@ -1088,7 +1088,7 @@ class ProductCatalogTests(TestCase):
             reverse("sklepzdoniczkami:password_reset_done"),
         )
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ["legacy@example.com"])
+        self.assertEqual(mail.outbox[0].to, ["Legacy@example.com"])
         reset_path = mail.outbox[0].body.split("http://testserver", 1)[1].splitlines()[0]
 
         response = self.client.get(reset_path)
@@ -1110,7 +1110,7 @@ class ProductCatalogTests(TestCase):
         )
         legacy_user.refresh_from_db()
         self.assertTrue(legacy_user.check_password("New-Legacy-Password-9481!"))
-        self.assertEqual(legacy_user.email, "legacy@example.com")
+        self.assertEqual(legacy_user.email, "Legacy@example.com")
 
     @override_settings(ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=False)
     def test_password_reset_does_not_show_reset_form_without_smtp(self):

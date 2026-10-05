@@ -26,7 +26,7 @@ class StorefrontPasswordResetForm(PasswordResetForm):
             is_active=True,
         ):
             if user.has_usable_password():
-                user.email = email
+                user.email = user.get_username()
                 yield user
 
 
