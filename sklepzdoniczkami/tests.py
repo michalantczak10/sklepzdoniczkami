@@ -14,6 +14,7 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command, CommandError
+from django.core import mail
 from django.db import connection
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -1000,6 +1001,64 @@ class ProductCatalogTests(TestCase):
         self.assertContains(response, 'autocomplete="username"')
         self.assertContains(response, 'autocomplete="current-password"')
         self.assertContains(response, 'class="form-field account-form-field"')
+
+    def test_admin_login_has_password_reset_link(self):
+        response = self.client.get(reverse("admin:login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("admin_password_reset"))
+
+    @override_settings(ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=False)
+    def test_password_reset_does_not_show_reset_form_without_smtp(self):
+        response = self.client.get(reverse("admin_password_reset"))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(response, "Wysyłka e-maili", status_code=503)
+
+    @override_settings(
+        ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="no-reply@example.com",
+    )
+    def test_reset_email_only_targets_active_superusers_and_resets_password(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="shop-admin",
+            email="owner@example.com",
+            password="Old-Password-123!",
+        )
+        get_user_model().objects.create_user(
+            username="customer",
+            email="owner@example.com",
+            password="Customer-Password-123!",
+        )
+
+        response = self.client.post(
+            reverse("admin_password_reset"),
+            {"email": "owner@example.com"},
+        )
+
+        self.assertRedirects(response, reverse("admin_password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["owner@example.com"])
+        self.assertIn("admin/reset/", mail.outbox[0].body)
+
+        reset_path = mail.outbox[0].body.split("https://testserver", 1)[1].splitlines()[0]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 302)
+        reset_path = response["Location"]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reset_path,
+            {
+                "new_password1": "New-Admin-Password-9481!",
+                "new_password2": "New-Admin-Password-9481!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("admin_password_reset_complete"))
+        admin_user.refresh_from_db()
+        self.assertTrue(admin_user.check_password("New-Admin-Password-9481!"))
 
     def test_add_to_cart_and_checkout(self):
         add_response = self.client.post(

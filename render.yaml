@@ -24,6 +24,18 @@ services:
         value: sklepzdoniczkami_prod
       - key: DATABASE_URL_PRODUCTION
         sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: DEFAULT_FROM_EMAIL
+        value: "no-reply@sklepzdoniczkami.pl"
       - key: STRIPE_SECRET_KEY_PRODUCTION
         sync: false
       - key: STRIPE_PUBLIC_KEY_PRODUCTION
