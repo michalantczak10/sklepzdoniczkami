@@ -104,14 +104,16 @@ hasło w menedżerze haseł. Reset odmówi działania, jeżeli na produkcji nie 
 dokładnie jednego superużytkownika. Nie wklejaj hasła do rozmowy ani do pola
 wejściowego workflow.
 
-Na ekranie logowania administratora dostępny jest też reset przez e-mail.
+Na ekranie logowania administratora i klienta dostępny jest też reset przez e-mail.
 Ustaw w ustawieniach Rendera SMTP `EMAIL_HOST`, `EMAIL_HOST_USER` i
 `EMAIL_HOST_PASSWORD` (oraz potwierdź poprawny `EMAIL_PORT`, TLS i adres
 `DEFAULT_FROM_EMAIL` zgodny z konfiguracją dostawcy poczty). Bez skonfigurowanej
 poczty strona resetu jawnie poinformuje, że usługa jest niedostępna — nie
-wypisze jednorazowego linku w logach. Formularz przyjmuje tylko adres
-superadministratora i zawsze pokazuje neutralną odpowiedź, niezależnie od tego,
-czy adres pasuje do konta.
+wypisze jednorazowego linku w logach. Formularze zawsze pokazują neutralną
+odpowiedź, niezależnie od tego, czy adres pasuje do aktywnego konta. Formularz
+rejestracji zapisuje adres e-mail w profilu. Starsze konta utworzone z adresem
+e-mail w polu loginu mogą użyć tego adresu do resetu; po skutecznej zmianie
+hasła zostanie on zapisany również jako adres konta.
 
 Workflow sprawdza przypięty host, bazę `sklepzdoniczkami_prod` i ograniczoną
 rolę runtime, używając istniejącego sekretu `DATABASE_URL_PRODUCTION_WEB`

@@ -281,7 +281,7 @@ EMAIL_BACKEND = os.environ.get(
         else 'django.core.mail.backends.console.EmailBackend'
     ),
 )
-ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED = all(
+PASSWORD_RESET_EMAIL_CONFIGURED = all(
     (
         EMAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend',
         EMAIL_HOST,
@@ -289,3 +289,4 @@ ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED = all(
         EMAIL_HOST_PASSWORD,
     )
 )
+ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED = PASSWORD_RESET_EMAIL_CONFIGURED

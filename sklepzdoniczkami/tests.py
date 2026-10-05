@@ -1008,6 +1008,110 @@ class ProductCatalogTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("admin_password_reset"))
 
+    def test_storefront_login_has_password_reset_link(self):
+        response = self.client.get(reverse("sklepzdoniczkami:login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("sklepzdoniczkami:password_reset"))
+
+    @override_settings(PASSWORD_RESET_EMAIL_CONFIGURED=False)
+    def test_storefront_password_reset_requires_email_configuration(self):
+        response = self.client.get(reverse("sklepzdoniczkami:password_reset"))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(response, "Wysyłka e-maili", status_code=503)
+
+    @override_settings(
+        PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="no-reply@example.com",
+    )
+    def test_storefront_password_reset_changes_password(self):
+        customer = get_user_model().objects.create_user(
+            username="customer-reset",
+            email="customer@example.com",
+            password="Old-Customer-Password-239!",
+        )
+
+        response = self.client.post(
+            reverse("sklepzdoniczkami:password_reset"),
+            {"email": "customer@example.com"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_done"),
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["customer@example.com"])
+        reset_path = mail.outbox[0].body.split("http://testserver", 1)[1].splitlines()[0]
+
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 302)
+        reset_path = response["Location"]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reset_path,
+            {
+                "new_password1": "New-Customer-Password-9481!",
+                "new_password2": "New-Customer-Password-9481!",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_complete"),
+        )
+        customer.refresh_from_db()
+        self.assertTrue(customer.check_password("New-Customer-Password-9481!"))
+
+    @override_settings(
+        PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="no-reply@example.com",
+    )
+    def test_storefront_password_reset_supports_legacy_email_username(self):
+        legacy_user = get_user_model().objects.create_user(
+            username="legacy@example.com",
+            email="",
+            password="Old-Customer-Password-239!",
+        )
+
+        response = self.client.post(
+            reverse("sklepzdoniczkami:password_reset"),
+            {"email": "legacy@example.com"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_done"),
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["legacy@example.com"])
+        reset_path = mail.outbox[0].body.split("http://testserver", 1)[1].splitlines()[0]
+
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 302)
+        reset_path = response["Location"]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reset_path,
+            {
+                "new_password1": "New-Legacy-Password-9481!",
+                "new_password2": "New-Legacy-Password-9481!",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_complete"),
+        )
+        legacy_user.refresh_from_db()
+        self.assertTrue(legacy_user.check_password("New-Legacy-Password-9481!"))
+        self.assertEqual(legacy_user.email, "legacy@example.com")
+
     @override_settings(ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=False)
     def test_password_reset_does_not_show_reset_form_without_smtp(self):
         response = self.client.get(reverse("admin_password_reset"))
@@ -1867,10 +1971,16 @@ class ProductCatalogTests(TestCase):
     def test_user_registration_and_profile(self):
         response = self.client.post(
             reverse("sklepzdoniczkami:register"),
-            {"username": "testuser", "password1": "StrongPass123!", "password2": "StrongPass123!"},
+            {
+                "username": "testuser",
+                "email": "testuser@example.com",
+                "password1": "StrongPass123!",
+                "password2": "StrongPass123!",
+            },
         )
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(get_user_model().objects.filter(username="testuser").exists())
+        user = get_user_model().objects.get(username="testuser")
+        self.assertEqual(user.email, "testuser@example.com")
 
         response = self.client.get(reverse("sklepzdoniczkami:profile"))
         self.assertEqual(response.status_code, 200)

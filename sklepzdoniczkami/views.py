@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.db import transaction
 from django.db.models import Q
@@ -24,6 +24,7 @@ from .catalog import (
     public_categories,
     public_products,
 )
+from .forms import CustomerCreationForm
 from .models import Category, Order, OrderItem, Product
 from .sample_catalog import SAMPLE_CATALOG
 from .services import cancel_order_and_release_inventory, reserve_order_inventory
@@ -761,7 +762,7 @@ def register_view(request):
     if request.user.is_authenticated:
         return redirect("sklepzdoniczkami:profile")
 
-    form = UserCreationForm(request.POST or None)
+    form = CustomerCreationForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
         login(request, user)
