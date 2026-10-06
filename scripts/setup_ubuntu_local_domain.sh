@@ -30,8 +30,12 @@ if [[ ! -f "$ENV_FILE" || ! -x "$APP_DIR/.venv/bin/gunicorn" ]] ||
     echo "The local production profile must be configured and active first." >&2
     exit 1
 fi
-if [[ -e "$PROXY_UNIT" || -e "$CADDY_CONFIG" ]]; then
-    echo "A local Caddy or production-proxy configuration already exists; inspect it before continuing." >&2
+if [[ -e "$PROXY_UNIT" ]]; then
+    echo "A production-proxy configuration already exists; inspect it before continuing." >&2
+    exit 1
+fi
+if [[ -e "${ENV_FILE}.before-local-domain" ]]; then
+    echo "A previous local-domain environment backup exists; inspect it before continuing." >&2
     exit 1
 fi
 if ! command -v systemctl >/dev/null 2>&1 ||
@@ -40,6 +44,22 @@ if ! command -v systemctl >/dev/null 2>&1 ||
     ! command -v ss >/dev/null 2>&1; then
     echo "Ubuntu with systemd, apt, curl, and socket tools is required." >&2
     exit 1
+fi
+if [[ -e "$CADDY_CONFIG" ]]; then
+    if ! dpkg-query -W -f='${Status}' caddy 2>/dev/null | grep -q 'install ok installed'; then
+        echo "A Caddyfile exists without the official Caddy package; inspect it before continuing." >&2
+        exit 1
+    fi
+    expected_config_hash="$(
+        dpkg-query -W -f='${Conffiles}' caddy |
+            awk '$1 == "/etc/caddy/Caddyfile" { print $2 }'
+    )"
+    actual_config_hash="$(md5sum "$CADDY_CONFIG" | awk '{print $1}')"
+    if [[ -z "$expected_config_hash" || "$actual_config_hash" != "$expected_config_hash" ]]; then
+        echo "The Caddyfile differs from the package default; refusing to replace custom configuration." >&2
+        exit 1
+    fi
+    systemctl stop caddy.service
 fi
 for port in 80 443 8003; do
     if ss -lntH | awk -v port=":$port" '$4 ~ port "$" { found = 1 } END { exit !found }'; then
@@ -54,32 +74,34 @@ for name in ALLOWED_HOSTS CSRF_TRUSTED_ORIGINS SITE_URL; do
     fi
 done
 
-echo "Installing Caddy from its signed official Ubuntu package repository..."
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    ca-certificates \
-    curl \
-    gnupg
-KEY_ASC="/usr/share/keyrings/caddy-stable-archive-keyring.asc"
-KEY_GPG="/usr/share/keyrings/caddy-stable-archive-keyring.gpg"
-SOURCE_LIST="/etc/apt/sources.list.d/caddy-stable.list"
-if [[ -e "$SOURCE_LIST" || -e "$KEY_GPG" ]]; then
-    if [[ ! -s "$SOURCE_LIST" || ! -s "$KEY_GPG" ]] ||
-        ! grep -Fq 'https://dl.cloudsmith.io/public/caddy/stable/deb/debian' "$SOURCE_LIST" ||
-        ! grep -Fq "signed-by=$KEY_GPG" "$SOURCE_LIST"; then
-        echo "Existing Caddy package-source files do not match the official source; inspect them." >&2
-        exit 1
+if ! command -v caddy >/dev/null 2>&1; then
+    echo "Installing Caddy from its signed official Ubuntu package repository..."
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        ca-certificates \
+        curl \
+        gnupg
+    KEY_ASC="/usr/share/keyrings/caddy-stable-archive-keyring.asc"
+    KEY_GPG="/usr/share/keyrings/caddy-stable-archive-keyring.gpg"
+    SOURCE_LIST="/etc/apt/sources.list.d/caddy-stable.list"
+    if [[ -e "$SOURCE_LIST" || -e "$KEY_GPG" ]]; then
+        if [[ ! -s "$SOURCE_LIST" || ! -s "$KEY_GPG" ]] ||
+            ! grep -Fq 'https://dl.cloudsmith.io/public/caddy/stable/deb/debian' "$SOURCE_LIST" ||
+            ! grep -Fq "signed-by=$KEY_GPG" "$SOURCE_LIST"; then
+            echo "Existing Caddy package-source files do not match the official source; inspect them." >&2
+            exit 1
+        fi
+    else
+        curl --fail --location --silent --show-error \
+            https://dl.cloudsmith.io/public/caddy/stable/gpg.key --output "$KEY_ASC"
+        gpg --dearmor --yes --output "$KEY_GPG" "$KEY_ASC"
+        curl --fail --location --silent --show-error \
+            https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt --output "$SOURCE_LIST"
+        chmod 0644 "$KEY_GPG" "$SOURCE_LIST"
     fi
-else
-    curl --fail --location --silent --show-error \
-        https://dl.cloudsmith.io/public/caddy/stable/gpg.key --output "$KEY_ASC"
-    gpg --dearmor --yes --output "$KEY_GPG" "$KEY_ASC"
-    curl --fail --location --silent --show-error \
-        https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt --output "$SOURCE_LIST"
-    chmod 0644 "$KEY_GPG" "$SOURCE_LIST"
+    apt-get -o Acquire::Retries=3 update
+    DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y caddy
 fi
-apt-get -o Acquire::Retries=3 update
-DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y caddy
 
 cp --preserve=mode,ownership "$ENV_FILE" "${ENV_FILE}.before-local-domain"
 sed -i \

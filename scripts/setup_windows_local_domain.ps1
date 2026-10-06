@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Install", "Remove")]
+    [ValidateSet("Install", "Refresh", "Remove")]
     [string]$Mode = "Install",
     [string]$CertificatePath = ""
 )
@@ -16,13 +16,62 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw "Run this script from PowerShell opened with 'Run as administrator'."
 }
 
+function Get-WslGuestIPv4 {
+    $wslExecutable = Join-Path $env:windir "System32\wsl.exe"
+    $addresses = & $wslExecutable --distribution Ubuntu-24.04 --exec hostname -I
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not start Ubuntu-24.04 to determine its current WSL address."
+    }
+    $address = $addresses -split "\s+" |
+        Where-Object { $_ -match '^(?:\d{1,3}\.){3}\d{1,3}$' -and $_ -notlike "127.*" } |
+        Select-Object -First 1
+    if (-not $address) {
+        throw "Ubuntu-24.04 did not report a usable IPv4 address."
+    }
+    return $address
+}
+
+function Update-HostsBlock {
+    param([switch]$RequireExisting)
+
+    $reader = [System.IO.StreamReader]::new($hostsPath, $true)
+    $text = $reader.ReadToEnd()
+    $encoding = $reader.CurrentEncoding
+    $reader.Dispose()
+
+    $hasStart = $text.Contains($startMarker)
+    $hasEnd = $text.Contains($endMarker)
+    if ($hasStart -ne $hasEnd) {
+        throw "The local-shop hosts block is incomplete; inspect the hosts file manually."
+    }
+    if ($RequireExisting -and -not $hasStart) {
+        throw "No local-shop hosts block exists; run with -Mode Install first."
+    }
+
+    $address = Get-WslGuestIPv4
+    $block = "$startMarker`r`n$address sklepzdoniczkami.pl www.sklepzdoniczkami.pl`r`n$endMarker"
+    if ($hasStart) {
+        $pattern = [regex]::Escape($startMarker) + '(?s).*?' + [regex]::Escape($endMarker)
+        $text = [regex]::Replace($text, $pattern, $block)
+    }
+    else {
+        $text = $text.TrimEnd("`r", "`n")
+        if ($text.Length -gt 0) { $text += "`r`n" }
+        $text += $block
+    }
+
+    [System.IO.File]::WriteAllText($hostsPath, ($text.TrimEnd("`r", "`n") + "`r`n"), $encoding)
+    Clear-DnsClientCache
+    Write-Output "Local hosts mapping now targets WSL address $address."
+}
+
 if ($Mode -eq "Install") {
     if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
         throw "Provide the WSL Caddy root certificate with -CertificatePath."
     }
-    $hostsContent = Get-Content -LiteralPath $hostsPath
-    if ($hostsContent -contains $startMarker -or $hostsContent -contains $endMarker) {
-        throw "A local-shop hosts block already exists; refusing to add a duplicate."
+    $hostsText = [System.IO.File]::ReadAllText($hostsPath)
+    if ($hostsText.Contains($startMarker) -ne $hostsText.Contains($endMarker)) {
+        throw "The local-shop hosts block is incomplete; inspect the hosts file manually."
     }
 
     $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
@@ -48,12 +97,7 @@ if ($Mode -eq "Install") {
         if (-not (Test-Path -LiteralPath $hostsBackup)) {
             Copy-Item -LiteralPath $hostsPath -Destination $hostsBackup
         }
-        @(
-            $startMarker
-            "127.0.0.1 sklepzdoniczkami.pl www.sklepzdoniczkami.pl"
-            $endMarker
-        ) | Add-Content -LiteralPath $hostsPath -Encoding ascii
-        Clear-DnsClientCache
+        Update-HostsBlock
         Write-Output "Local-only domain override installed. Public DNS was not changed."
     }
     catch {
@@ -65,13 +109,17 @@ if ($Mode -eq "Install") {
     return
 }
 
+if ($Mode -eq "Refresh") {
+    Update-HostsBlock -RequireExisting
+    return
+}
+
 $reader = [System.IO.StreamReader]::new($hostsPath, $true)
 $contentText = $reader.ReadToEnd()
 $encoding = $reader.CurrentEncoding
 $reader.Dispose()
-$content = $contentText -split "\r?\n"
-$start = [Array]::IndexOf($content, $startMarker)
-$end = [Array]::IndexOf($content, $endMarker)
+$start = $contentText.IndexOf($startMarker, [System.StringComparison]::Ordinal)
+$end = $contentText.IndexOf($endMarker, [System.StringComparison]::Ordinal)
 if ($start -lt 0 -and $end -lt 0) {
     Write-Output "No local-shop hosts override was found."
     return
@@ -79,12 +127,11 @@ if ($start -lt 0 -and $end -lt 0) {
 if ($start -lt 0 -or $end -lt $start) {
     throw "The local-shop hosts block is incomplete; inspect the hosts file manually."
 }
-$remaining = @()
-if ($start -gt 0) { $remaining += $content[0..($start - 1)] }
-if ($end -lt ($content.Length - 1)) { $remaining += $content[($end + 1)..($content.Length - 1)] }
+$end += $endMarker.Length
+$remaining = $contentText.Remove($start, $end - $start).TrimEnd("`r", "`n")
 [System.IO.File]::WriteAllText(
     $hostsPath,
-    (($remaining -join "`r`n").TrimEnd("`r", "`n") + "`r`n"),
+    ($remaining + "`r`n"),
     $encoding
 )
 Clear-DnsClientCache

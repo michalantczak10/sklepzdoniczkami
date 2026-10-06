@@ -170,9 +170,13 @@ sudo bash scripts/setup_ubuntu_local_domain.sh
 ```
 
 Skrypt instaluje Caddy z oficjalnego, podpisanego repozytorium pakietów,
-wiąże go wyłącznie z `127.0.0.1`, ustawia certyfikat lokalnego urzędu Caddy i
-oddzielny upstream Gunicorna na `127.0.0.1:8003`. Nie zmienia publicznego DNS.
-Kopiuje także bieżący plik ustawień production do
+ustawia certyfikat lokalnego urzędu Caddy i oddzielny upstream Gunicorna na
+`127.0.0.1:8003`. Caddy wiąże porty 80/443 z `0.0.0.0` wewnątrz WSL, ponieważ
+przekazywanie portów localhost WSL wymaga nasłuchiwania na interfejsie
+wildcard. PostgreSQL i pozostałe usługi aplikacji pozostają na loopback. Nie
+otwieraj portów routera ani zapory Windows dla sieci LAN; zapora Hyper-V WSL
+powinna blokować połączenia przychodzące spoza hosta. Nie zmienia to publicznego
+DNS. Skrypt kopiuje także bieżący plik ustawień production do
 `/etc/sklepzdoniczkami/production.env.before-local-domain`.
 
 Następnie skopiuj wskazany przez skrypt plik `root.crt` z WSL do
@@ -186,9 +190,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_
 ```
 
 Skrypt robi kopię zapasową pliku `hosts`, dodaje oznaczony wpis dla domeny i
-ufa certyfikatowi Caddy tylko w magazynie bieżącego użytkownika Windows.
-Aby cofnąć lokalne przekierowanie oraz zaufanie certyfikatu, uruchom
-PowerShell jako administrator:
+mapuje nazwę na aktualny adres WSL. Ufa certyfikatowi Caddy tylko w magazynie
+bieżącego użytkownika Windows. Adres WSL może zmienić się po restarcie
+dystrybucji; wtedy odśwież lokalny wpis w PowerShell uruchomionym jako
+administrator:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_local_domain.ps1 `
+  -Mode Refresh
+```
+
+Aby cofnąć lokalne przekierowanie oraz zaufanie certyfikatu, uruchom PowerShell
+jako administrator:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_local_domain.ps1 `
@@ -197,9 +210,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_
 ```
 
 Zmiana `hosts` dotyczy tylko tego laptopa; inne urządzenia nadal trafią na
-publiczny adres Rendera. Lokalna baza production jest pusta do czasu
-odtworzenia zweryfikowanego backupu, więc po przekierowaniu domena otworzy
-lokalny sklep bez rzeczywistego katalogu, klientów ani zamówień.
+publiczny adres Rendera. WSL musi być uruchomiony, aby domena działała;
+po restarcie Windows uruchom `wsl --distribution Ubuntu-24.04`, co uruchomi
+systemd i usługi. WSL może zatrzymać się po zamknięciu wszystkich sesji.
+Wpis `hosts` wskazuje aktualny adres WSL; jeśli adres się zmieni, wykonaj
+`-Mode Refresh` ponownie w PowerShellu jako administrator. Nie otwieraj portów
+w routerze ani nie dodawaj reguł przychodzących zapory dla publicznego dostępu.
+Lokalna baza production jest pusta do czasu odtworzenia zweryfikowanego
+backupu, więc po przekierowaniu domena otworzy lokalny sklep bez rzeczywistego
+katalogu, klientów ani zamówień.
 
 ## Uruchomienie na Ubuntu Server
 
