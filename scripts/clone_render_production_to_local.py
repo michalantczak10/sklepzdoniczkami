@@ -3,11 +3,15 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
 
 import psycopg2
 from dotenv import dotenv_values
+
+if __package__:
+    from scripts.postgres_utils import connection_parts, postgres_environment
+else:
+    from postgres_utils import connection_parts, postgres_environment
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -15,36 +19,6 @@ RENDER_SERVICE_ID = "srv-dao3huoae00c73akpv40"
 PRODUCTION_DATABASE_NAME = "sklepzdoniczkami_prod"
 LOCAL_DATABASE_NAME = "sklepzdoniczkami_dev"
 LOCAL_PORT = 5435
-
-
-def connection_parts(database_url):
-    parsed = urlparse(database_url)
-    query = parse_qs(parsed.query)
-    return {
-        "host": parsed.hostname,
-        "port": parsed.port or 5432,
-        "user": unquote(parsed.username or ""),
-        "password": unquote(parsed.password or ""),
-        "dbname": unquote(parsed.path.lstrip("/")),
-        "sslmode": query.get("sslmode", ["prefer"])[0],
-        "channel_binding": query.get("channel_binding", ["prefer"])[0],
-    }
-
-
-def postgres_environment(connection):
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "PGHOST": connection["host"],
-            "PGPORT": str(connection["port"]),
-            "PGUSER": connection["user"],
-            "PGPASSWORD": connection["password"],
-            "PGDATABASE": connection["dbname"],
-            "PGSSLMODE": connection["sslmode"],
-            "PGCHANNELBINDING": connection["channel_binding"],
-        }
-    )
-    return environment
 
 
 def run_postgres_tool(command, environment, log_file):

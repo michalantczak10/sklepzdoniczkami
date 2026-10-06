@@ -8,6 +8,9 @@ płatności Stripe, konta klientów i panel administratora.
 Decyzje dotyczące baz danych, branchy, wdrożeń, CI i review opisuje
 [plan architektury](ARCHITECTURE-PLAN.md).
 
+Instrukcja odtworzenia sklepu na własnym komputerze lub serwerze znajduje się
+w [runbooku self-hostingu i odzyskiwania](docs/self-hosting-recovery.md).
+
 ## Uruchomienie lokalne
 
 Wymagany jest Python 3.11 lub nowszy.
