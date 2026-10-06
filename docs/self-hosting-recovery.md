@@ -78,6 +78,129 @@ tylko na `127.0.0.1:5435`. Wariant `development` jest przeznaczony do testów;
 nie wystawiać go do internetu. Skrypt tworzy lokalną bazę, nie odtwarza
 automatycznie bieżących danych produkcyjnych ani plików mediów.
 
+### Windows 11 z Ubuntu w WSL2
+
+Jeśli polityka integralności kodu Windows blokuje natywne biblioteki
+PostgreSQL, pozostaw ochronę Windows włączoną i uruchom środowisko development
+w Ubuntu 24.04 LTS przez WSL2. W PowerShell zainstaluj WSL i dystrybucję:
+
+```powershell
+wsl --install --distribution Ubuntu-24.04
+```
+
+Po wymaganym restarcie uruchom Ubuntu, utwórz zwykłego użytkownika Linux i
+sprawdź, że `systemd` działa (`systemctl is-system-running`). Jeśli dystrybucja
+nie ma włączonego `systemd`, dodaj `systemd=true` w sekcji `[boot]` pliku
+`/etc/wsl.conf`, zachowując jego pozostałe ustawienia, a następnie wykonaj
+`wsl --shutdown` i uruchom Ubuntu ponownie.
+
+W terminalu Ubuntu przygotuj checkout zgodnie z procedurą poniżej: zainstaluj
+Git, sklonuj repozytorium do `/opt/sklepzdoniczkami` należącego do zwykłego
+użytkownika i uruchom `sudo bash scripts/setup_ubuntu_selfhost.sh development`.
+Skrypt tworzy osobną bazę development i włącza lokalną usługę systemd; nie
+odtwarza danych produkcyjnych, nie modyfikuje bazy Windows/Neon i nie konfiguruje
+publicznego dostępu. W Windows strona jest pod
+`http://127.0.0.1:8000/`, a panel pod `http://127.0.0.1:8000/admin/`.
+Po pierwszym setupie możesz załadować pięć syntetycznych produktów ze zdjęciami
+poleceniem `python manage.py load_sample_products` w katalogu checkoutu.
+Polecenie odmawia działania poza `APP_ENV=development` i można je bezpiecznie
+uruchamiać ponownie.
+
+Po restarcie Windows uruchom dystrybucję poleceniem
+`wsl --distribution Ubuntu-24.04`; wtedy systemd uruchomi włączoną usługę.
+Pozostaw sesję Ubuntu uruchomioną podczas korzystania ze sklepu; po zakończeniu
+wszystkich procesów WSL może zatrzymać dystrybucję i lokalne usługi.
+PostgreSQL pozostaje prywatny w Ubuntu. Nie zmieniaj DNS ani ustawień routera
+dla developmentu.
+
+### Lokalne profile preprod i production obok development
+
+Na komputerze z już działającym profilem development możesz utworzyć dwie
+dodatkowe, odizolowane bazy i usługi:
+
+```bash
+cd /opt/sklepzdoniczkami
+sudo bash scripts/setup_ubuntu_local_profiles.sh
+```
+
+Development pozostaje pod `http://127.0.0.1:8000/`. Lokalny preprod działa pod
+`https://localhost:8001/`, a lokalna symulacja production pod
+`https://localhost:8002/`. Każdy profil ma osobną bazę i rolę PostgreSQL
+(`sklepzdoniczkami_dev`, `sklepzdoniczkami_preprod`,
+`sklepzdoniczkami_prod`), osobny plik ustawień w
+`/etc/sklepzdoniczkami/` i osobną usługę systemd. Profile preprod i production
+używają samopodpisanego certyfikatu TLS dla `localhost`; przeglądarka pokaże
+ostrzeżenie o zaufaniu do certyfikatu. Nie używaj tego certyfikatu na publicznej
+domenie.
+
+Skrypt wymaga, aby development był już skonfigurowany i działał. Preprod
+otrzymuje syntetyczny katalog. Lokalna baza production jest pusta poza
+migracjami i administratorem; nie są kopiowane konta, zamówienia ani media
+klientów z Render/Neon. Stripe nie jest skonfigurowany, a wiadomości e-mail
+pozostają w logu aplikacji. To są lokalne symulacje, nie publiczna produkcja;
+nie zmieniają DNS, Rendera ani zdalnych baz. Wszystkie trzy usługi i PostgreSQL
+nasłuchują wyłącznie na loopback.
+
+Losowe dane logowania administratorów preprod i production skrypt zapisuje do
+`~/.local/share/sklepzdoniczkami/local-profiles-credentials.txt` konta Linux
+uruchamiającego `sudo`; plik ma uprawnienia `0600`. Nie dodawaj go do Git ani
+nie publikuj. Usługi można kontrolować osobno:
+
+```bash
+sudo systemctl status sklepzdoniczkami-preprod sklepzdoniczkami-production
+sudo systemctl stop sklepzdoniczkami-preprod sklepzdoniczkami-production
+sudo systemctl start sklepzdoniczkami-preprod sklepzdoniczkami-production
+```
+
+Profile korzystają z tego samego checkoutu kodu, ale z odrębnych baz. Zmiana
+kodu w tym checkoutcie wpływa na wszystkie lokalne profile po restarcie
+odpowiedniej usługi. Lokalny profil production jest pustą symulacją do testów
+konfiguracji; nie przywracaj do niego produkcyjnego backupu ani nie kieruj na
+niego publicznej domeny w ramach tej procedury.
+
+#### Lokalna domena na Windows
+
+Jeżeli chcesz, aby `https://sklepzdoniczkami.pl` na tym laptopie otwierało
+lokalny profil production zamiast publicznego Rendera, skonfiguruj proxy
+Caddy i lokalny Gunicorn upstream w WSL:
+
+```bash
+cd /opt/sklepzdoniczkami
+sudo bash scripts/setup_ubuntu_local_domain.sh
+```
+
+Skrypt instaluje Caddy z oficjalnego, podpisanego repozytorium pakietów,
+wiąże go wyłącznie z `127.0.0.1`, ustawia certyfikat lokalnego urzędu Caddy i
+oddzielny upstream Gunicorna na `127.0.0.1:8003`. Nie zmienia publicznego DNS.
+Kopiuje także bieżący plik ustawień production do
+`/etc/sklepzdoniczkami/production.env.before-local-domain`.
+
+Następnie skopiuj wskazany przez skrypt plik `root.crt` z WSL do
+`$env:TEMP\sklepzdoniczkami-wsl-root.crt` w Windows. Uruchom PowerShell jako
+administrator i wykonaj z katalogu repozytorium:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_local_domain.ps1 `
+  -Mode Install `
+  -CertificatePath "$env:TEMP\sklepzdoniczkami-wsl-root.crt"
+```
+
+Skrypt robi kopię zapasową pliku `hosts`, dodaje oznaczony wpis dla domeny i
+ufa certyfikatowi Caddy tylko w magazynie bieżącego użytkownika Windows.
+Aby cofnąć lokalne przekierowanie oraz zaufanie certyfikatu, uruchom
+PowerShell jako administrator:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_local_domain.ps1 `
+  -Mode Remove `
+  -CertificatePath "$env:TEMP\sklepzdoniczkami-wsl-root.crt"
+```
+
+Zmiana `hosts` dotyczy tylko tego laptopa; inne urządzenia nadal trafią na
+publiczny adres Rendera. Lokalna baza production jest pusta do czasu
+odtworzenia zweryfikowanego backupu, więc po przekierowaniu domena otworzy
+lokalny sklep bez rzeczywistego katalogu, klientów ani zamówień.
+
 ## Uruchomienie na Ubuntu Server
 
 Zainstaluj Ubuntu Server LTS i aktualizacje systemu. Zainstaluj Git, utwórz
