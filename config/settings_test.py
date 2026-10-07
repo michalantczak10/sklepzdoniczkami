@@ -1,4 +1,4 @@
-# Test settings: use SQLite in-memory to run tests without needing to create databases on Neon.
+# Test settings: use SQLite in-memory without a remote database.
 # This imports normal settings then overrides DATABASES for tests.
 from .settings import *  # noqa: F401,F403
 
