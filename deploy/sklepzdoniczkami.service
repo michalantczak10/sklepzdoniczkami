@@ -11,6 +11,7 @@ WorkingDirectory=@APP_DIR@
 EnvironmentFile=/etc/sklepzdoniczkami/app.env
 Environment=DJANGO_ENV_FILE=/etc/sklepzdoniczkami/app.env
 Environment=DJANGO_SETTINGS_MODULE=config.settings
+Environment=HOME=/tmp
 ExecStart=@APP_DIR@/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 config.wsgi:application
 Restart=on-failure
 RestartSec=5

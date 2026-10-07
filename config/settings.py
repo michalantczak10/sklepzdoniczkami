@@ -20,7 +20,6 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-APP_ENV_FROM_ENV = os.environ.get('APP_ENV')
 DOTENV_PATH = Path(os.environ.get('DJANGO_ENV_FILE', BASE_DIR / '.env'))
 load_dotenv(DOTENV_PATH, override=bool(os.environ.get('DJANGO_ENV_FILE')))
 
@@ -28,10 +27,8 @@ def env_value(name, default=None):
     return os.environ.get(f'{name}_{ENV_SUFFIX}', default)
 
 
-def resolve_app_env(app_env: str | None, *, is_render: bool) -> str:
+def resolve_app_env(app_env: str | None) -> str:
     if not app_env or not app_env.strip():
-        if is_render:
-            raise ImproperlyConfigured('APP_ENV must be explicitly configured on Render.')
         app_env = 'development'
 
     resolved_app_env = app_env.strip().lower()
@@ -40,13 +37,7 @@ def resolve_app_env(app_env: str | None, *, is_render: bool) -> str:
     return resolved_app_env
 
 
-IS_RENDER = any(
-    os.environ.get(name) for name in ('RENDER', 'RENDER_SERVICE_ID', 'RENDER_EXTERNAL_URL')
-)
-APP_ENV = resolve_app_env(
-    APP_ENV_FROM_ENV if IS_RENDER else os.environ.get('APP_ENV'),
-    is_render=IS_RENDER,
-)
+APP_ENV = resolve_app_env(os.environ.get('APP_ENV'))
 ENV_SUFFIX = APP_ENV.upper()
 
 
@@ -96,8 +87,7 @@ SITE_URL = os.environ.get(
 ).rstrip('/')
 SEO_INDEXING_ENABLED = APP_ENV == 'production'
 
-# When running behind Render's proxy, requests arrive over HTTP internally but
-# were made over HTTPS by the client. This header tells Django to trust that.
+# The reverse proxy forwards the original HTTPS protocol to Django.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 if not DEBUG:

@@ -156,7 +156,7 @@ MEDIA_ROOT=$mediaDirectory
     )
 
     Write-Output "Created a separate $Environment PostgreSQL database, listening only on 127.0.0.1:$Port."
-    Write-Output "Private credentials were saved under LocalAppData; no Neon or Render settings were changed."
+    Write-Output "Private credentials were saved under LocalAppData; the VPS and domain DNS were not changed."
 }
 finally {
     Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
