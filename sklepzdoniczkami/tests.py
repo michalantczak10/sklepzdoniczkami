@@ -46,15 +46,11 @@ catalog_visibility_migration = import_module(
 
 
 class AppEnvironmentTests(SimpleTestCase):
-    def test_render_requires_explicit_environment(self):
-        with self.assertRaisesMessage(ImproperlyConfigured, "explicitly configured on Render"):
-            resolve_app_env(None, is_render=True)
-
     def test_local_environment_defaults_to_development(self):
-        self.assertEqual(resolve_app_env(None, is_render=False), "development")
+        self.assertEqual(resolve_app_env(None), "development")
 
     def test_environment_is_normalized(self):
-        self.assertEqual(resolve_app_env(" PREPROD ", is_render=True), "preprod")
+        self.assertEqual(resolve_app_env(" PREPROD "), "preprod")
 
 
 class SearchEngineOptimizationTests(TestCase):
