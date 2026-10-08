@@ -8,9 +8,9 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from scripts import restore_github_production_backup
+from scripts import backup_ovh, restore_github_production_backup
 from scripts.postgres_utils import postgres_environment
 from scripts.restore_github_production_backup import (
     EXPECTED_DATABASE,
@@ -28,6 +28,164 @@ from scripts.restore_github_production_backup import (
 
 
 class SelfHostRecoveryTests(unittest.TestCase):
+    def test_restic_backup_requires_https_s3_and_dedicated_credentials(self):
+        configuration = {
+            "RESTIC_REPOSITORY": "s3:https://s3.gra.io.cloud.ovh.net/private-bucket/prod",
+            "RESTIC_PASSWORD": "long-random-backup-password",
+            "AWS_ACCESS_KEY_ID": "dedicated-key",
+            "AWS_SECRET_ACCESS_KEY": "dedicated-secret",
+            "AWS_DEFAULT_REGION": "gra",
+        }
+
+        environment = backup_ovh.validate_restic_configuration(configuration)
+
+        self.assertEqual(
+            environment["RESTIC_REPOSITORY"], configuration["RESTIC_REPOSITORY"]
+        )
+        self.assertEqual(environment["AWS_DEFAULT_REGION"], "gra")
+        self.assertEqual(
+            environment["RESTIC_CACHE_DIR"], str(backup_ovh.RESTIC_CACHE_DIR)
+        )
+
+        for repository in (
+            "file:///tmp/backup",
+            "s3:http://s3.gra.io.cloud.ovh.net/private-bucket/prod",
+            "s3:https:///private-bucket/prod",
+            "s3:https://s3.gra.io.cloud.ovh.net/",
+        ):
+            invalid_configuration = configuration | {"RESTIC_REPOSITORY": repository}
+            with self.subTest(repository=repository), self.assertRaisesRegex(
+                ValueError, "HTTPS S3 URL"
+            ):
+                backup_ovh.validate_restic_configuration(invalid_configuration)
+
+    def test_restic_backup_requires_every_storage_credential(self):
+        with self.assertRaisesRegex(ValueError, "AWS_SECRET_ACCESS_KEY"):
+            backup_ovh.validate_restic_configuration(
+                {
+                    "RESTIC_REPOSITORY": "s3:https://s3.gra.io.cloud.ovh.net/bucket/prod",
+                    "RESTIC_PASSWORD": "long-random-backup-password",
+                    "AWS_ACCESS_KEY_ID": "dedicated-key",
+                }
+            )
+
+    def test_restic_backup_covers_database_and_media_with_bounded_retention(self):
+        backup_script = Path(__file__).with_name("backup_ovh.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"pg_dump"', backup_script)
+        self.assertIn('str(MEDIA_ROOT)', backup_script)
+        self.assertIn('"restic",\n                "backup"', backup_script)
+        self.assertIn('"--keep-daily",\n            "7"', backup_script)
+        self.assertIn('"--keep-weekly",\n            "5"', backup_script)
+        self.assertIn('"--keep-monthly",\n            "12"', backup_script)
+        self.assertIn('"--prune"', backup_script)
+        forget_command = backup_script.split('"restic",\n            "forget"', 1)[1]
+        self.assertIn('"--tag",\n            "production"', forget_command)
+
+    def test_backup_bootstrap_installs_isolated_tooling_without_app_deploy(self):
+        installer = Path(__file__).with_name("install_ovh_backup.sh").read_text(
+            encoding="utf-8"
+        ).replace("\r\n", "\n")
+        installer_wrapper = Path(__file__).with_name("install_ovh_backup.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        for source_file in (
+            "scripts/backup_ovh.py",
+            "scripts/postgres_utils.py",
+            "scripts/restore_github_production_backup.py",
+            "deploy/backup.env.example",
+            "deploy/sklepzdoniczkami-backup.service",
+            "deploy/sklepzdoniczkami-backup.timer",
+        ):
+            self.assertIn(source_file, installer)
+        self.assertIn('archive --format=tar "$COMMIT"', installer)
+        self.assertIn("BACKUP_ROOT=", installer)
+        self.assertNotIn('git -C "$APP_DIR" switch', installer)
+        self.assertNotIn("systemctl enable", installer)
+        self.assertNotIn("systemctl start", installer)
+        self.assertIn("Django tests", installer_wrapper)
+        self.assertIn("End-to-end tests (Playwright)", installer_wrapper)
+        self.assertIn("PostgreSQL tests", installer_wrapper)
+        self.assertIn("git merge-base --is-ancestor", installer_wrapper)
+
+    def test_backup_creates_dump_uploads_both_data_sets_and_checks_repository(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache_directory = root / "restic-cache"
+            cache_directory.mkdir()
+            temporary_directory = MagicMock()
+            temporary_directory.__enter__.return_value = str(root)
+            temporary_directory.__exit__.return_value = False
+            commands = []
+
+            def run(command, **kwargs):
+                commands.append(command)
+                if command[0] == "pg_dump":
+                    dump_path = Path(
+                        next(
+                            argument.removeprefix("--file=")
+                            for argument in command
+                            if argument.startswith("--file=")
+                        )
+                    )
+                    dump_path.write_bytes(b"postgres backup")
+                if command[:2] == ["restic", "backup"]:
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        stdout='{"message_type":"summary","snapshot_id":"verified"}\n',
+                    )
+                return subprocess.CompletedProcess(command, 0)
+
+            with (
+                patch(
+                    "scripts.backup_ovh.os.geteuid", return_value=0, create=True
+                ),
+                patch(
+                    "scripts.backup_ovh.private_configuration",
+                    return_value=(
+                        {"RESTIC_REPOSITORY": "s3:https://example.invalid/bucket"},
+                        {
+                            "host": "127.0.0.1",
+                            "port": 5432,
+                            "user": EXPECTED_DATABASE,
+                            "password": "test-only",
+                            "dbname": EXPECTED_DATABASE,
+                            "sslmode": "prefer",
+                            "channel_binding": "prefer",
+                        },
+                    ),
+                ),
+                patch(
+                    "scripts.backup_ovh.validate_restic_configuration",
+                    return_value={
+                        "RESTIC_REPOSITORY": "s3:https://example.invalid/bucket"
+                    },
+                ),
+                patch.object(backup_ovh, "RESTIC_CACHE_DIR", cache_directory),
+                patch(
+                    "scripts.backup_ovh.tempfile.TemporaryDirectory",
+                    return_value=temporary_directory,
+                ),
+                patch("scripts.backup_ovh.subprocess.run", side_effect=run),
+            ):
+                backup_ovh.create_backup()
+
+            self.assertEqual(
+                [command[0] for command in commands],
+                ["pg_dump", "restic", "restic", "restic"],
+            )
+            backup_command = commands[1]
+            self.assertIn(str(backup_ovh.MEDIA_ROOT), backup_command)
+            self.assertIn("production", backup_command)
+            self.assertEqual(commands[2][1], "check")
+            self.assertEqual(commands[3][1], "forget")
+            self.assertIn("--tag", commands[3])
+            self.assertIn("production", commands[3])
+
     def test_deploy_script_requires_every_mandatory_ci_check(self):
         deploy_script = Path(__file__).with_name("deploy_ovh.ps1").read_text(
             encoding="utf-8"
@@ -59,6 +217,8 @@ class SelfHostRecoveryTests(unittest.TestCase):
         self.assertIn('stat -c \'%u\' "$PREPROD_COMMIT_FILE"', deploy_script)
         self.assertIn('[[ ! "${preprod_marker_mode: -2}" =~ [2367] ]]', deploy_script)
         self.assertIn('[[ ! "${backup_marker_mode: -2}" =~ [2367] ]]', deploy_script)
+        self.assertIn('backup_verified_at="$(cat "$BACKUP_MARKER")"', deploy_script)
+        self.assertIn('current_time - backup_verified_at <= 2592000', deploy_script)
 
     def test_backup_package_accepts_only_expected_regular_files(self):
         with tempfile.TemporaryDirectory() as temporary:

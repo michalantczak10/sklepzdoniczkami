@@ -101,12 +101,12 @@ ich jako warunku merge.
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $sha
    ```
    Skrypt blokuje produkcję, jeśli ten sam SHA nie przeszedł wcześniej
-   wdrożenia i testów health-check na preprod albo brakuje root-owned znaczników
-   `/etc/sklepzdoniczkami/preprod-deployed-commit` i
-   `/etc/sklepzdoniczkami/production-backup-verified`. Drugi potwierdza
-   zweryfikowaną kopię bazy i mediów poza VPS. `Bypass` dotyczy wyłącznie
-   uruchomionego procesu PowerShell i nie zmienia trwałej polityki komputera ani
-   użytkownika.
+   wdrożenia i testów health-check na preprod albo brakuje root-owned znacznika
+   `/etc/sklepzdoniczkami/preprod-deployed-commit` lub świeżego (maks. 30 dni)
+   potwierdzenia próby odtworzenia backupu w
+   `/etc/sklepzdoniczkami/production-backup-verified`. `Bypass` dotyczy
+   wyłącznie uruchomionego procesu PowerShell i nie zmienia trwałej polityki
+   komputera ani użytkownika.
 
 Nagły hotfix produkcyjny zaczynaj od `main`, scalaj PR-em do `main`, sprawdź go
 na preprod i wdrażaj ten sam SHA; następnie otwórz PR synchronizujący `main` do

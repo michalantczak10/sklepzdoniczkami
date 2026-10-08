@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted offsite backup of Sklepzdoniczkami production data
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=sklepzdoniczkami-backup.service
+
+[Install]
+WantedBy=timers.target
