@@ -20,7 +20,11 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
-from config.settings import resolve_app_env, validate_stripe_configuration
+from config.settings import (
+    resolve_app_env,
+    resolve_secure_ssl_redirect,
+    validate_stripe_configuration,
+)
 from .management.commands.bootstrap_first_admin import Command as BootstrapFirstAdminCommand
 from .management.commands.reset_production_admin_password import (
     Command as ResetProductionAdminPasswordCommand,
@@ -874,6 +878,16 @@ class SampleProductCommandTests(TestCase):
             call_command("load_sample_products")
 
         self.assertFalse(Product.objects.filter(is_active=True).exists())
+
+
+class SecureRedirectConfigurationTests(SimpleTestCase):
+    def test_direct_tls_environments_do_not_redirect(self):
+        self.assertFalse(resolve_secure_ssl_redirect("development", "True"))
+        self.assertFalse(resolve_secure_ssl_redirect("preprod", "True"))
+
+    def test_production_redirect_can_be_disabled_explicitly(self):
+        self.assertTrue(resolve_secure_ssl_redirect("production", "True"))
+        self.assertFalse(resolve_secure_ssl_redirect("production", "False"))
 
 
 class StripeConfigurationTests(TestCase):

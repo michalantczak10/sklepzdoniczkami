@@ -37,6 +37,10 @@ def resolve_app_env(app_env: str | None) -> str:
     return resolved_app_env
 
 
+def resolve_secure_ssl_redirect(app_env: str, configured_value: str) -> bool:
+    return app_env == 'production' and configured_value == 'True'
+
+
 APP_ENV = resolve_app_env(os.environ.get('APP_ENV'))
 ENV_SUFFIX = APP_ENV.upper()
 IS_TEST_SETTINGS = os.environ.get('DJANGO_SETTINGS_MODULE') == 'config.settings_test'
@@ -91,12 +95,16 @@ SEO_INDEXING_ENABLED = APP_ENV == 'production'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True') == 'True'
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+SECURE_SSL_REDIRECT = resolve_secure_ssl_redirect(
+    APP_ENV, os.environ.get('SECURE_SSL_REDIRECT', 'True')
+)
+
 
 def validate_stripe_configuration(app_env, secret_key, public_key, webhook_secret):
     secret_key, public_key, webhook_secret = (
