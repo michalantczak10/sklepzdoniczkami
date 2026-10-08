@@ -1,9 +1,27 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+PREPROD_MARKER_DIR="/etc/sklepzdoniczkami"
+PREPROD_COMMIT_FILE="$PREPROD_MARKER_DIR/preprod-deployed-commit"
+
 fail() {
     echo "Deployment blocked: $*" >&2
     exit 1
+}
+
+require_root_controlled_directory() {
+    local directory="$1"
+    local mode
+
+    [[ -d "$directory" && ! -L "$directory" ]] ||
+        fail "release-marker directory is missing or is a symlink."
+    [[ "$(stat -c '%u' "$directory")" == "0" ]] ||
+        fail "release-marker directory must be root-owned."
+    mode="$(stat -c '%a' "$directory")"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] ||
+        fail "could not read release-marker directory permissions."
+    [[ ! "${mode: -2}" =~ [2367] ]] ||
+        fail "release-marker directory must not be group- or world-writable."
 }
 
 [[ "$EUID" -eq 0 ]] || fail "run through sudo."
@@ -61,17 +79,32 @@ esac
 [[ -d "$STATE_DIR" ]] || fail "systemd state directory not found at $STATE_DIR."
 
 if [[ "$TARGET_ENV" == "production" ]]; then
+    require_root_controlled_directory "$PREPROD_MARKER_DIR"
     BACKUP_MARKER="/etc/sklepzdoniczkami/production-backup-verified"
     [[ -f "$BACKUP_MARKER" && ! -L "$BACKUP_MARKER" ]] ||
         fail "verify an offsite database and media backup/restore before production deployment."
     [[ "$(stat -c '%u' "$BACKUP_MARKER")" == "0" ]] ||
         fail "the verified-backup marker must be root-owned."
+    backup_marker_mode="$(stat -c '%a' "$BACKUP_MARKER")"
+    [[ "$backup_marker_mode" =~ ^[0-7]{3,4}$ ]] ||
+        fail "could not read verified-backup marker permissions."
+    [[ ! "${backup_marker_mode: -2}" =~ [2367] ]] ||
+        fail "the verified-backup marker must not be group- or world-writable."
 
-    PREPROD_COMMIT_FILE="/var/lib/sklepzdoniczkami-preprod/deployed-commit"
-    [[ -r "$PREPROD_COMMIT_FILE" ]] ||
+    [[ -f "$PREPROD_COMMIT_FILE" && ! -L "$PREPROD_COMMIT_FILE" ]] ||
         fail "deploy and test this exact commit in preprod first."
+    [[ "$(stat -c '%u' "$PREPROD_COMMIT_FILE")" == "0" ]] ||
+        fail "the preprod deployment marker must be root-owned."
+    preprod_marker_mode="$(stat -c '%a' "$PREPROD_COMMIT_FILE")"
+    [[ "$preprod_marker_mode" =~ ^[0-7]{3,4}$ ]] ||
+        fail "could not read preprod deployment marker permissions."
+    [[ ! "${preprod_marker_mode: -2}" =~ [2367] ]] ||
+        fail "the preprod deployment marker must not be group- or world-writable."
     [[ "$(cat "$PREPROD_COMMIT_FILE")" == "$COMMIT" ]] ||
         fail "production commit must match the successfully deployed preprod commit."
+fi
+if [[ "$TARGET_ENV" == "preprod" ]]; then
+    require_root_controlled_directory "$PREPROD_MARKER_DIR"
 fi
 
 if [[ -n "$(git -C "$APP_DIR" status --porcelain --untracked-files=all)" ]]; then
@@ -134,10 +167,16 @@ for attempt in {1..20}; do
 done
 [[ "$healthy" -eq 1 ]] || fail "the $TARGET_ENV service did not pass its HTTPS health check."
 
-marker_tmp="$STATE_DIR/.deployed-commit.$$"
+if [[ "$TARGET_ENV" == "preprod" ]]; then
+    marker_path="$PREPROD_COMMIT_FILE"
+    marker_tmp="$PREPROD_MARKER_DIR/.preprod-deployed-commit.$$"
+else
+    marker_path="$STATE_DIR/deployed-commit"
+    marker_tmp="$STATE_DIR/.deployed-commit.$$"
+fi
 printf '%s\n' "$COMMIT" > "$marker_tmp"
 chmod 0644 "$marker_tmp"
-mv -- "$marker_tmp" "$STATE_DIR/deployed-commit"
+mv -- "$marker_tmp" "$marker_path"
 DEPLOYMENT_STARTED=0
 trap - EXIT
 
