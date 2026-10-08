@@ -160,6 +160,22 @@ Na VPS pozostawiono wcześniejszy jednorazowy dump w
 może zawierać starsze dane. Zmiany izolujące usługi mają osobną kopię
 konfiguracyjną w tym samym katalogu, ale nie jest to kopia zapasowa poza VPS.
 
+Jeśli masz wcześniej pobrany zaszyfrowany pakiet bazy w formacie GitHub Actions
+(`.tgz` z metadanymi HMAC), repozytorium zawiera narzędzie
+`scripts/restore_github_production_backup.py`. Uruchom je z katalogu
+`/opt/sklepzdoniczkami` jako root, podając dokładnie sprawdzony pakiet; narzędzie
+weryfikuje HMAC, pyta o klucze i wymaga jawnego potwierdzenia przed nadpisaniem
+lokalnej bazy produkcyjnej. Zatrzymuje usługę sklepu na czas odtworzenia i
+pozostawia ją zatrzymaną, jeśli odtworzenie się nie powiedzie. Narzędzie
+odtwarza wyłącznie bazę, nie pliki `media/`; nie tworzy nowych kopii zapasowych
+i nie zastępuje kopii offsite.
+
+```bash
+sudo /opt/sklepzdoniczkami/.venv/bin/python \
+  /opt/sklepzdoniczkami/scripts/restore_github_production_backup.py \
+  /path/to/verified-backup.tgz
+```
+
 Repozytorium nie zawiera baz, sekretów ani plików użytkowników. Obrazy
 ilustracyjne w `static/` są kodem i podlegają wdrożeniu razem z aplikacją;
 pliki użytkowników w katalogach `/var/lib/sklepzdoniczkami-*/media` wymagają
