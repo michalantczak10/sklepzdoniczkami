@@ -4,6 +4,12 @@ from .models import Category, Product
 
 
 POT_CATEGORY_SLUGS = ("doniczki", "betonowe", "drewniane", "plastikowe")
+POT_CATEGORY_IMAGES = {
+    "doniczki": "sklepzdoniczkami/img/categories/doniczki.svg",
+    "betonowe": "sklepzdoniczkami/img/categories/betonowe.svg",
+    "drewniane": "sklepzdoniczkami/img/categories/drewniane.svg",
+    "plastikowe": "sklepzdoniczkami/img/categories/plastikowe.svg",
+}
 RETIRED_CATEGORY_SLUGS = ("rosliny-zielone", "preprod-rosliny-zielone")
 RETIRED_PRODUCT_SLUGS = (
     "monstera-deliciosa",

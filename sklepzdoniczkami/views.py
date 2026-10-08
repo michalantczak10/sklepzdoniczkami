@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, ListView
 
 from .catalog import (
+    POT_CATEGORY_IMAGES,
     POT_CATEGORY_SLUGS,
     RETIRED_CATEGORY_SLUGS,
     RETIRED_PRODUCT_SLUGS,
@@ -139,15 +140,15 @@ class ProductListView(ListView):
         }
         card_details.update({
             "betonowe": {
-                "image": "sklepzdoniczkami/img/categories/betonowe.svg",
+                "image": POT_CATEGORY_IMAGES["betonowe"],
                 "description": "Stabilne, minimalistyczne formy o kamiennym charakterze.",
             },
             "drewniane": {
-                "image": "sklepzdoniczkami/img/categories/drewniane.svg",
+                "image": POT_CATEGORY_IMAGES["drewniane"],
                 "description": "Naturalne usłojenie i ciepłe odcienie drewna.",
             },
             "plastikowe": {
-                "image": "sklepzdoniczkami/img/categories/plastikowe.svg",
+                "image": POT_CATEGORY_IMAGES["plastikowe"],
                 "description": "Lekkie, praktyczne doniczki do domu i na balkon.",
             },
         })
@@ -156,7 +157,7 @@ class ProductListView(ListView):
             {
                 "category": category,
                 "image": card_details.get(category.slug, {}).get(
-                    "image", "sklepzdoniczkami/img/products/pot-terracotta-1.jpg"
+                    "image", POT_CATEGORY_IMAGES["doniczki"]
                 ),
                 "description": card_details.get(
                     category.slug, {}
