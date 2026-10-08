@@ -21,12 +21,13 @@ zamówień.
 
 | Środowisko | Kod / Python | Usługa i baza | Dane trwałe |
 | --- | --- | --- | --- |
-| Development | `/opt/sklepzdoniczkami-development`, własne `.venv`, commit `44a3d4d` | `sklepzdoniczkami-development.service`, `sklepzdoniczkami_dev` | `/var/lib/sklepzdoniczkami-development` |
-| Preprod | `/opt/sklepzdoniczkami-preprod`, własne `.venv`, commit `8cad84d` | `sklepzdoniczkami-preprod.service`, `sklepzdoniczkami_preprod` | `/var/lib/sklepzdoniczkami-preprod` |
-| Produkcja | `/opt/sklepzdoniczkami`, własne `.venv`, commit `adc66a9` | `sklepzdoniczkami.service`, `sklepzdoniczkami_prod` | `/var/lib/sklepzdoniczkami-production` |
+| Development | `/opt/sklepzdoniczkami-development`, własne `.venv` | `sklepzdoniczkami-development.service`, `sklepzdoniczkami_dev` | `/var/lib/sklepzdoniczkami-development` |
+| Preprod | `/opt/sklepzdoniczkami-preprod`, własne `.venv` | `sklepzdoniczkami-preprod.service`, `sklepzdoniczkami_preprod` | `/var/lib/sklepzdoniczkami-preprod` |
+| Produkcja | `/opt/sklepzdoniczkami`, własne `.venv` | `sklepzdoniczkami.service`, `sklepzdoniczkami_prod` | `/var/lib/sklepzdoniczkami-production` |
 
-SHA w tabeli odzwierciedlają stan sprawdzony 2026-10-08; bieżący commit można
-odczytać poleceniem `git -C <ścieżka-checkoutu> rev-parse HEAD`.
+SHA wdrożenia jest celowo odczytywany z checkoutu, a nie utrzymywany w tabeli,
+żeby dokument nie stawał się nieaktualny po kolejnym release. Bieżący commit
+sprawdzisz poleceniem `git -C <ścieżka-checkoutu> rev-parse HEAD`.
 
 Każdy proces działa jako osobny systemowy użytkownik bez powłoki logowania.
 Produkcyjny Gunicorn używa wyłącznie roli PostgreSQL
