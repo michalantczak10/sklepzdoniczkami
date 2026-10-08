@@ -72,7 +72,7 @@ rejestrowanymi ani egzekwowanymi przez GitHub.
    ```powershell
    git fetch origin
    $sha = (git rev-parse origin/dev).Trim()
-   .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
    ```
    Skrypt przed połączeniem sprawdza, że commit należy do właściwej gałęzi i że
    wymagane checki Django oraz Playwright zakończyły się sukcesem.
@@ -81,15 +81,17 @@ rejestrowanymi ani egzekwowanymi przez GitHub.
    ```powershell
    git fetch origin
    $sha = (git rev-parse origin/main).Trim()
-   .\scripts/deploy_ovh.ps1 -Environment preprod -Commit $sha
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment preprod -Commit $sha
    ```
 4. Po akceptacji preprod wdrażaj **ten sam SHA** na produkcję:
    ```powershell
-   .\scripts/deploy_ovh.ps1 -Environment production -Commit $sha
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $sha
    ```
    Skrypt blokuje produkcję, jeśli ten sam SHA nie przeszedł wcześniej
    wdrożenia i testów health-check na preprod albo nie ma root-owned znacznika
-   potwierdzającego zweryfikowaną kopię bazy i mediów poza VPS.
+   potwierdzającego zweryfikowaną kopię bazy i mediów poza VPS. `Bypass`
+   dotyczy wyłącznie uruchomionego procesu PowerShell i nie zmienia trwałej
+   polityki komputera ani użytkownika.
 
 Jeśli `dev` i `main` się rozjadą, najpierw otwórz PR synchronizujący `main` do
 `dev`, rozwiąż konflikty i poczekaj na wymagane CI. Do czasu jego scalenia nie

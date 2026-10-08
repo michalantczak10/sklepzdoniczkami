@@ -145,7 +145,7 @@ klucza do GitHub ani do CI.
 ```powershell
 git fetch origin
 $developmentSha = (git rev-parse origin/dev).Trim()
-.\scripts/deploy_ovh.ps1 -Environment development -Commit $developmentSha
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $developmentSha
 ```
 
 Po PR `dev` -> `main` i testach na development wybierz commit z `main`,
@@ -154,9 +154,12 @@ wdrażaj go na preprod, a po akceptacji podaj **ten sam SHA** dla produkcji:
 ```powershell
 git fetch origin
 $releaseSha = (git rev-parse origin/main).Trim()
-.\scripts/deploy_ovh.ps1 -Environment preprod -Commit $releaseSha
-.\scripts/deploy_ovh.ps1 -Environment production -Commit $releaseSha
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment preprod -Commit $releaseSha
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $releaseSha
 ```
+
+The execution-policy bypass applies only to those PowerShell processes; it does
+not change the machine or user policy.
 
 Skrypt na VPS sprawdza czystość checkoutu, pochodzenie commitu, migracje,
 collectstatic i health-check odpowiedniej usługi. Produkcja dodatkowo wymaga
