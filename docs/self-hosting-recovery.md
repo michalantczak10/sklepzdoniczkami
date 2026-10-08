@@ -145,7 +145,8 @@ sudo systemctl reload caddy
 
 Uruchamiaj wdrożenia z Windows w katalogu repozytorium przez
 `scripts/deploy_ovh.ps1`. Skrypt weryfikuje lokalnie, że commit należy do
-oczekiwanej gałęzi i oba wymagane checki GitHub Actions zakończyły się
+oczekiwanej gałęzi i wszystkie trzy wymagane checki GitHub Actions (`Django
+tests`, `End-to-end tests (Playwright)` i `PostgreSQL tests`) zakończyły się
 sukcesem. Łączy się do VPS przy użyciu lokalnego klucza SSH; nie dodawaj tego
 klucza do GitHub ani do CI.
 
@@ -172,12 +173,13 @@ Skrypt na VPS sprawdza czystość checkoutu, pochodzenie commitu, migracje,
 collectstatic i health-check odpowiedniej usługi. Produkcja dodatkowo wymaga
 tego samego SHA w preprod oraz root-owned pliku
 `/etc/sklepzdoniczkami/production-backup-verified`. Utwórz ten znacznik dopiero
-po skonfigurowaniu zaszyfrowanej kopii PostgreSQL i `media/` poza VPS oraz
-udanym teście odtworzenia:
+po udanym teście odtworzenia bazy i `media/` z zewnętrznego magazynu. Znacznik
+musi zawierać czas testu jako UTC Unix timestamp; wygasa po 30 dniach:
 
 ```bash
-sudo install -o root -g root -m 0600 /dev/null \
-  /etc/sklepzdoniczkami/production-backup-verified
+date -u +%s | sudo tee /etc/sklepzdoniczkami/production-backup-verified >/dev/null
+sudo chown root:root /etc/sklepzdoniczkami/production-backup-verified
+sudo chmod 0600 /etc/sklepzdoniczkami/production-backup-verified
 ```
 
 Udane wdrożenie preprod zapisuje testowany SHA w
@@ -199,12 +201,80 @@ danych development -> preprod/produkcja. Nie używaj w produkcji komend
 ## Kopie zapasowe i odzyskiwanie
 
 Automatyczna, niezależna kopia bazy PostgreSQL i `media/` poza VPS **nie jest
-skonfigurowana**. Lokalna kopia na tym samym serwerze nie chroni przed utratą
+skonfigurowana**. Usunięty workflow GitHub Actions tworzył wyłącznie szyfrowane
+kopie bazy ze starego, przypiętego endpointu Neon; nie obejmował bazy OVH ani
+plików `media/`. Zachowane artefakty traktuj wyłącznie jako historyczne i nie
+używaj ich jako potwierdzenia backupu ani aktualnego źródła odtworzenia. Lokalna
+kopia na tym samym serwerze nie chroni przed utratą
 VPS. Zanim produkcja zacznie przechowywać zamówienia lub dane klientów,
 skonfiguruj zaszyfrowane kopie poza serwerem, retencję, monitoring i test
 odtworzenia do osobnej bazy. Do tego czasu nie wykonuj migracji produkcyjnej,
 która może utrudnić odtworzenie, i nie traktuj serwera jako gotowego do
 przyjmowania zamówień.
+
+Repozytorium zawiera przygotowany, lecz **nieaktywowany** mechanizm backupu do
+prywatnego magazynu S3-compatible (`scripts/backup_ovh.py`, `deploy/*backup*`).
+Kopie zawierają custom dump `sklepzdoniczkami_prod` i cały katalog `media/`;
+Restic szyfruje repozytorium, sprawdza jego spójność i utrzymuje 7 kopii
+dziennych, 5 tygodniowych oraz 12 miesięcznych. Codzienny timer jest opóźniany
+losowo do 15 minut. Żadne poświadczenia, bucket ani płatny zasób nie są
+skonfigurowane przez sam kod.
+
+Po scaleniu narzędzi do `main` i przejściu wszystkich trzech wymaganych kontroli
+CI dostarcz je na VPS osobnym instalatorem. Instalator weryfikuje SHA względem
+`origin/main`, tworzy niezmienny katalog wydania pod
+`/opt/sklepzdoniczkami-backup/`, instaluje jednostki systemd i przeładowuje ich
+definicje. Nie przełącza checkoutu aplikacji, nie wykonuje migracji, nie
+restartuje sklepu i nie włącza timera. Uruchom go lokalnie na Windows:
+
+```powershell
+git fetch origin
+$backupSha = (git rev-parse origin/main).Trim()
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_ovh_backup.ps1 -Commit $backupSha
+```
+
+Instalator wymaga, aby produkcyjne środowisko Pythona zawierało `python-dotenv`
+i `psycopg2`. Sam nie instaluje Restic, nie włącza timera ani nie konfiguruje
+sekretów. Po jego wykonaniu, utworzeniu prywatnego bucketu S3 w OVH i
+przygotowaniu dedykowanego klucza ograniczonego do tego bucketu, skonfiguruj
+usługę. Nie uruchamiaj backupu, zanim nie dodasz poświadczeń do prywatnego
+pliku:
+
+```bash
+sudo apt-get update
+sudo apt-get install --no-install-recommends restic
+sudo install -o root -g root -m 0600 \
+  /opt/sklepzdoniczkami-backup/current/deploy/backup.env.example \
+  /etc/sklepzdoniczkami/backup.env
+sudoedit /etc/sklepzdoniczkami/backup.env
+sudo install -o root -g root -m 0700 -d /var/cache/sklepzdoniczkami-restic
+sudo env PYTHONPATH=/opt/sklepzdoniczkami-backup/current \
+  /opt/sklepzdoniczkami/.venv/bin/python -m scripts.backup_ovh --init-repository
+sudo systemctl start sklepzdoniczkami-backup.service
+sudo journalctl -u sklepzdoniczkami-backup.service --no-pager
+sudo env PYTHONPATH=/opt/sklepzdoniczkami-backup/current \
+  /opt/sklepzdoniczkami/.venv/bin/python -m scripts.backup_ovh --verify-restore
+sudo systemctl enable --now sklepzdoniczkami-backup.timer
+```
+
+W pliku `backup.env` skonfiguruj URL w formacie
+`s3:https://s3.<region>.io.cloud.ovh.net/<bucket>/sklepzdoniczkami-production`,
+region OVH, dedykowane klucze S3 oraz `RESTIC_PASSWORD`. Wygeneruj silne hasło
+oraz przechowaj je poza VPS w menedżerze haseł/offline; zachowaj tam również
+endpoint i klucze dostępowe. Utrata hasła uniemożliwi odszyfrowanie backupu.
+Nie zapisuj sekretów w repozytorium, CI,
+historii poleceń ani rozmowie. `sudoedit` pozostawia konfigurację root-owned;
+sprawdź, że ma tryb `0600`. Nie ustawiaj `production-backup-verified`, dopóki
+backup i `--verify-restore` nie zakończą się powodzeniem. Test odtwarza pełny
+snapshot do prywatnego katalogu tymczasowego, importuje bazę do tymczasowej
+bazy PostgreSQL, sprawdza dostępność głównych tabel i usuwa testową bazę;
+produkcyjna baza i działająca usługa nie są zmieniane. Po teście ustaw znacznik
+z aktualnym timestampem jak powyżej. Powtarzaj pełny test odtworzenia co
+najmniej raz na 30 dni; wdrożenie produkcyjne zostanie zablokowane, jeśli
+znacznik wygaśnie. Jest to test odtwarzalności kopii, nie polecenie awaryjnego
+odtworzenia produkcji ani pełna próba katastroficzna na osobnym VPS. Nie
+uruchamiaj ręcznego odtwarzania Restic bez przygotowanej procedury awaryjnej
+i przeglądu wpływu na bieżące dane.
 
 Na VPS pozostawiono wcześniejszy jednorazowy dump w
 `/var/backups/sklepzdoniczkami/`. Nie odtwarzaj go bez świadomej decyzji:

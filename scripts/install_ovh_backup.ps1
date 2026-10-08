@@ -1,10 +1,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('development', 'preprod', 'production')]
-    [string]$Environment,
-
-    [Parameter(Mandatory = $true)]
     [ValidatePattern('(?i)^[0-9a-f]{40}$')]
     [string]$Commit,
 
@@ -17,30 +13,25 @@ $ErrorActionPreference = 'Stop'
 $repository = 'michalantczak10/sklepzdoniczkami'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $null = Set-Location -LiteralPath $repositoryRoot
-$sourceBranch = if ($Environment -eq 'development') { 'dev' } else { 'main' }
 $Commit = $Commit.ToLowerInvariant()
 
 if (-not (Test-Path -LiteralPath $SshKeyPath -PathType Leaf)) {
     throw "SSH key not found at $SshKeyPath."
 }
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw 'Git is required.'
-}
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw 'GitHub CLI is required to verify the required CI checks.'
-}
-if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
-    throw 'OpenSSH client is required.'
+foreach ($command in @('git', 'gh', 'ssh')) {
+    if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+        throw "$command is required."
+    }
 }
 
-$null = & git fetch --quiet origin "refs/heads/${sourceBranch}:refs/remotes/origin/${sourceBranch}"
+$null = & git fetch --quiet origin "refs/heads/main:refs/remotes/origin/main"
 if ($LASTEXITCODE -ne 0) {
-    throw "Could not fetch origin/$sourceBranch."
+    throw 'Could not fetch origin/main.'
 }
 
-$null = & git merge-base --is-ancestor $Commit "origin/$sourceBranch"
+$null = & git merge-base --is-ancestor $Commit 'origin/main'
 if ($LASTEXITCODE -ne 0) {
-    throw "Commit $Commit is not reachable from origin/$sourceBranch."
+    throw "Commit $Commit is not reachable from origin/main."
 }
 
 $checksJson = & gh api "repos/$repository/commits/$Commit/check-runs?per_page=100"
@@ -62,16 +53,16 @@ foreach ($requiredCheck in @(
     }
 }
 
-$scriptContents = & git show "$($Commit):scripts/deploy_ovh.sh"
+$installerContents = & git show "$($Commit):scripts/install_ovh_backup.sh"
 if ($LASTEXITCODE -ne 0) {
-    throw "Commit $Commit does not contain scripts/deploy_ovh.sh."
+    throw "Commit $Commit does not contain scripts/install_ovh_backup.sh."
 }
 $payload = [Convert]::ToBase64String(
-    [Text.Encoding]::UTF8.GetBytes([string]::Join("`n", $scriptContents))
+    [Text.Encoding]::UTF8.GetBytes([string]::Join("`n", $installerContents))
 )
-$remoteCommand = "echo $payload | base64 -d | sudo -n bash -s -- $Environment $Commit"
+$remoteCommand = "echo $payload | base64 -d | sudo -n bash -s -- $Commit"
 & ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes `
     -i $SshKeyPath $SshHost $remoteCommand
 if ($LASTEXITCODE -ne 0) {
-    throw "Deployment to $Environment failed with exit code $LASTEXITCODE."
+    throw "Backup tooling installation failed with exit code $LASTEXITCODE."
 }

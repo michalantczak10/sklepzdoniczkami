@@ -63,16 +63,17 @@ Branche `feature/...`, `fix/...` i `chore/...` są krótkotrwałe i po PR powinn
 znikać. GitHub usuwa branche PR automatycznie po scaleniu.
 
 Ochrona `dev` i `main` wymaga przejścia `Django tests`, `End-to-end tests
-(Playwright)` oraz rozwiązania wątków review; bezpośredni push i force-push są
-zablokowane, także dla administratorów. Wymagane approvals wynoszą `0`, więc
-żaden człowiek nie musi zatwierdzać PR-a. Dwa niezależne przeglądy AI mogą być
-użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje ich jako warunku merge.
+(Playwright)`, `PostgreSQL tests` oraz rozwiązania wątków review; bezpośredni
+push i force-push są zablokowane, także dla administratorów. Wymagane approvals
+wynoszą `0`, więc żaden człowiek nie musi zatwierdzać PR-a. Dwa niezależne
+przeglądy AI mogą być użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje
+ich jako warunku merge.
 
 1. Zaczynaj `feature/...`, `fix/...` lub `chore/...` od aktualnego `dev`.
-   Otwórz PR do `dev`; poczekaj na oba wymagane checki i rozwiąż wszystkie
+   Otwórz PR do `dev`; poczekaj na wszystkie wymagane checki i rozwiąż wszystkie
    wątki. Dla zwykłych zmian scalaj przez squash, aby historia `dev` była
-   czytelna. CI uruchamia testy na GitHub-hosted runners z SQLite i nie wdraża
-   aplikacji ani nie łączy się z bazami OVH.
+   czytelna. CI uruchamia testy na GitHub-hosted runners z SQLite i PostgreSQL,
+   nie wdraża aplikacji ani nie łączy się z bazami OVH.
 2. Po merge wdrażaj pełny SHA `origin/dev` wyłącznie na development:
    ```powershell
    git fetch --prune origin
@@ -80,6 +81,7 @@ użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje ich jako warunku merge.
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
    ```
    Skrypt sprawdza, czy SHA należy do właściwej gałęzi i czy wymagane checki
+   `Django tests`, `End-to-end tests (Playwright)` i `PostgreSQL tests`
    zakończyły się sukcesem.
 3. Po testach akceptacyjnych otwieraj PR `dev` -> `main`. Scalaj go przez
    **merge commit**, aby zachować relację historii gałęzi. Po scaleniu otwórz
@@ -99,12 +101,12 @@ użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje ich jako warunku merge.
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $sha
    ```
    Skrypt blokuje produkcję, jeśli ten sam SHA nie przeszedł wcześniej
-   wdrożenia i testów health-check na preprod albo brakuje root-owned znaczników
-   `/etc/sklepzdoniczkami/preprod-deployed-commit` i
-   `/etc/sklepzdoniczkami/production-backup-verified`. Drugi potwierdza
-   zweryfikowaną kopię bazy i mediów poza VPS. `Bypass` dotyczy wyłącznie
-   uruchomionego procesu PowerShell i nie zmienia trwałej polityki komputera ani
-   użytkownika.
+   wdrożenia i testów health-check na preprod albo brakuje root-owned znacznika
+   `/etc/sklepzdoniczkami/preprod-deployed-commit` lub świeżego (maks. 30 dni)
+   potwierdzenia próby odtworzenia backupu w
+   `/etc/sklepzdoniczkami/production-backup-verified`. `Bypass` dotyczy
+   wyłącznie uruchomionego procesu PowerShell i nie zmienia trwałej polityki
+   komputera ani użytkownika.
 
 Nagły hotfix produkcyjny zaczynaj od `main`, scalaj PR-em do `main`, sprawdź go
 na preprod i wdrażaj ten sam SHA; następnie otwórz PR synchronizujący `main` do
@@ -169,6 +171,10 @@ produkt, cenę, stan i zdjęcie przed publikacją w produkcji.
 - Zachowano stare JPG, ponieważ służą jeszcze za ilustracje strony głównej i
   nieprodukcyjnego katalogu preview; ich źródła/licencje są w
   [README_IMAGES.md](README_IMAGES.md).
+- Usunięto nieużywaną klasę `CategoryListView`, identyczny duplikat
+  `Caddyfile.example`, dwa nieużywane zdjęcia oraz sześć kopii obrazów z
+  `docs/sample-images/`; używane zdjęcia pozostają w katalogu statycznym
+  aplikacji.
 - Wartości środowiskowe mają jawne nazwy baz i wymagane klucze dla preprod/prod;
   statyczne URL-e zaczynają się od `/static/`, by działały także na zagnieżdżonych
   ścieżkach produktów.
@@ -184,6 +190,9 @@ Runbook VPS, usług, wdrożeń i obecnych ograniczeń odzyskiwania:
 **Pozostałe ryzyko:** na VPS nie ma skonfigurowanej ani przetestowanej kopii
 zapasowej poza serwerem. Nie przechowuj tam jedynej kopii zamówień ani danych
 klientów; przed sprzedażą skonfiguruj niezależną kopię i przetestuj odtworzenie.
+Pozostałe artefakty GitHub pochodzą ze starego workflow tworzącego kopię
+wyłącznie bazy Neon; nie obejmują bieżącej bazy OVH ani mediów i nie są
+potwierdzeniem aktualnego backupu.
 
 **Gotowość sprzedażowa (kontrola 2026-10-08):** Stripe jest wyłączony, SMTP
 nie jest skonfigurowany, produkcyjna baza ma zero aktywnych produktów i zero

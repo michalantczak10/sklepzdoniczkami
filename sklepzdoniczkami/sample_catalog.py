@@ -9,7 +9,7 @@ SAMPLE_CATALOG = (
             "legacy_slug": "preprod-doniczki",
             "description": "Doniczki w różnych formach, kolorach i materiałach.",
         },
-        "category_image": "sklepzdoniczkami/img/products/pot-terracotta-1.jpg",
+        "category_image": "sklepzdoniczkami/img/categories/doniczki.svg",
         "products": (
             {
                 "name": "Doniczka ceramiczna",
@@ -20,7 +20,7 @@ SAMPLE_CATALOG = (
                 ),
                 "price": Decimal("39.90"),
                 "stock": 20,
-                "image": "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+                "image": "/static/sklepzdoniczkami/img/products/doniczka-ceramiczna.svg",
             },
         ),
     },

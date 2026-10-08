@@ -90,6 +90,14 @@ if [[ "$TARGET_ENV" == "production" ]]; then
         fail "could not read verified-backup marker permissions."
     [[ ! "${backup_marker_mode: -2}" =~ [2367] ]] ||
         fail "the verified-backup marker must not be group- or world-writable."
+    backup_verified_at="$(cat "$BACKUP_MARKER")"
+    [[ "$backup_verified_at" =~ ^[0-9]{10}$ ]] ||
+        fail "the verified-backup marker must contain a UTC Unix timestamp from a successful restore test."
+    current_time="$(date +%s)"
+    (( backup_verified_at <= current_time )) ||
+        fail "the verified-backup marker timestamp is in the future."
+    (( current_time - backup_verified_at <= 2592000 )) ||
+        fail "repeat the offsite database and media restore test; the verification is older than 30 days."
 
     [[ -f "$PREPROD_COMMIT_FILE" && ! -L "$PREPROD_COMMIT_FILE" ]] ||
         fail "deploy and test this exact commit in preprod first."

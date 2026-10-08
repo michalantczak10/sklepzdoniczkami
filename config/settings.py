@@ -43,7 +43,7 @@ def resolve_secure_ssl_redirect(app_env: str, configured_value: str) -> bool:
 
 APP_ENV = resolve_app_env(os.environ.get('APP_ENV'))
 ENV_SUFFIX = APP_ENV.upper()
-IS_TEST_SETTINGS = os.environ.get('DJANGO_SETTINGS_MODULE') == 'config.settings_test'
+IS_TEST_SETTINGS = os.environ.get('DJANGO_SETTINGS_MODULE', '').startswith('config.settings_test')
 
 
 # Quick-start development settings - unsuitable for production
