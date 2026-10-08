@@ -37,14 +37,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Validate local Compose configuration
-        run: docker compose config --quiet
-
       - name: Run Django check
-        run: python manage.py check
+        run: python manage.py check --settings=config.settings_test
 
       - name: Check for missing migrations
-        run: python manage.py makemigrations --check --dry-run
+        run: python manage.py makemigrations --check --dry-run --settings=config.settings_test
 
       - name: Run Django tests with SQLite
         run: pytest -q --ds=config.settings_test

@@ -3,7 +3,7 @@ from django.db.models import Count, Q
 from .models import Category, Product
 
 
-POT_CATEGORY_SLUGS = ("doniczki", "ceramiczne", "plastikowe", "cementowe")
+POT_CATEGORY_SLUGS = ("doniczki", "betonowe", "drewniane", "plastikowe")
 RETIRED_CATEGORY_SLUGS = ("rosliny-zielone", "preprod-rosliny-zielone")
 RETIRED_PRODUCT_SLUGS = (
     "monstera-deliciosa",

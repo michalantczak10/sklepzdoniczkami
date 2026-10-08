@@ -39,35 +39,35 @@ def resolve_app_env(app_env: str | None) -> str:
 
 APP_ENV = resolve_app_env(os.environ.get('APP_ENV'))
 ENV_SUFFIX = APP_ENV.upper()
+IS_TEST_SETTINGS = os.environ.get('DJANGO_SETTINGS_MODULE') == 'config.settings_test'
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env_value(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-ew3ox9x+(5*j2p5p9sbdk=y4%bc%g1x%ld)-mf#nwv^s%+@wce',
-)
+SECRET_KEY = env_value('DJANGO_SECRET_KEY')
+if IS_TEST_SETTINGS and not SECRET_KEY:
+    SECRET_KEY = 'django-insecure-internal-test-key'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') if os.environ.get('ALLOWED_HOSTS') else ['*']
-if APP_ENV in {'preprod', 'production'}:
+if not IS_TEST_SETTINGS:
     if not env_value('DATABASE_URL'):
         raise ImproperlyConfigured(f'DATABASE_URL_{ENV_SUFFIX} is required.')
     if not env_value('DJANGO_SECRET_KEY'):
         raise ImproperlyConfigured(f'DJANGO_SECRET_KEY_{ENV_SUFFIX} is required.')
-    if DEBUG:
-        raise ImproperlyConfigured(f'DEBUG must be False when APP_ENV={APP_ENV}.')
     if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
         raise ImproperlyConfigured(f'ALLOWED_HOSTS must be explicitly configured when APP_ENV={APP_ENV}.')
+    if APP_ENV in {'preprod', 'production'} and DEBUG:
+        raise ImproperlyConfigured(f'DEBUG must be False when APP_ENV={APP_ENV}.')
 
 if env_value('DATABASE_URL'):
     actual_database_name = dj_database_url.parse(env_value('DATABASE_URL'))['NAME']
     expected_database_name = env_value('DATABASE_NAME')
-    if APP_ENV in {'preprod', 'production'} and not expected_database_name:
+    if not expected_database_name and not IS_TEST_SETTINGS:
         raise ImproperlyConfigured(
             f'DATABASE_NAME_{ENV_SUFFIX} is required when DATABASE_URL_{ENV_SUFFIX} is set.'
         )
@@ -202,7 +202,7 @@ LOGOUT_REDIRECT_URL = 'sklepzdoniczkami:home'
 DATABASES = {
     'default': dj_database_url.config(
         env=f'DATABASE_URL_{ENV_SUFFIX}',
-        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        default='sqlite:///:memory:',
         conn_max_age=600,
     )
 }
@@ -247,7 +247,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 

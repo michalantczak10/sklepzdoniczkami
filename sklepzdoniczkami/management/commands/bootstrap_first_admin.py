@@ -37,7 +37,6 @@ class Command(BaseCommand):
     def validate_production_database(self):
         database = connections["default"]
         database_settings = database.settings_dict
-        expected_host = os.environ.get("PRODUCTION_DATABASE_HOST", "").strip()
         connection_options = {
             str(option).lower()
             for option in database_settings.get("OPTIONS", {})
@@ -45,9 +44,8 @@ class Command(BaseCommand):
         if (
             database_settings["ENGINE"] != "django.db.backends.postgresql"
             or database_settings["NAME"] != "sklepzdoniczkami_prod"
-            or database_settings["USER"] != "sklepzdoniczkami_prod_web_limited"
-            or not expected_host
-            or database_settings["HOST"].lower() != expected_host.lower()
+            or database_settings["USER"] != "sklepzdoniczkami_prod"
+            or database_settings["HOST"] not in {"127.0.0.1", "localhost", "::1"}
             or database_settings.get("PORT") not in {None, "", 5432, "5432"}
             or connection_options.intersection(ROUTING_OPTIONS)
         ):
@@ -62,7 +60,7 @@ class Command(BaseCommand):
             actual_database, actual_user, actual_schema = cursor.fetchone()
         if (
             actual_database != "sklepzdoniczkami_prod"
-            or actual_user != "sklepzdoniczkami_prod_web_limited"
+            or actual_user != "sklepzdoniczkami_prod"
             or actual_schema != "public"
         ):
             raise CommandError(

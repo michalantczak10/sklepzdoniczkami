@@ -2,29 +2,18 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: sudo bash scripts/setup_ubuntu_selfhost.sh [development|production]" >&2
+    echo "Usage: sudo bash scripts/setup_ubuntu_selfhost.sh production" >&2
     exit 2
 }
 
 [[ "$#" -le 1 ]] || usage
-APP_ENV="${1:-development}"
-case "$APP_ENV" in
-    development)
-        DATABASE_NAME="sklepzdoniczkami_dev"
-        DEBUG="True"
-        ALLOWED_HOSTS="localhost,127.0.0.1"
-        CSRF_TRUSTED_ORIGINS="http://localhost,http://127.0.0.1"
-        SITE_URL="http://127.0.0.1:8000"
-        ;;
-    production)
-        DATABASE_NAME="sklepzdoniczkami_prod"
-        DEBUG="False"
-        ALLOWED_HOSTS="sklepzdoniczkami.pl,www.sklepzdoniczkami.pl,localhost,127.0.0.1"
-        CSRF_TRUSTED_ORIGINS="https://sklepzdoniczkami.pl,https://www.sklepzdoniczkami.pl"
-        SITE_URL="https://sklepzdoniczkami.pl"
-        ;;
-    *) usage ;;
-esac
+[[ -z "${1:-}" || "$1" == "production" ]] || usage
+APP_ENV="production"
+DATABASE_NAME="sklepzdoniczkami_prod"
+DEBUG="False"
+ALLOWED_HOSTS="sklepzdoniczkami.pl,www.sklepzdoniczkami.pl"
+CSRF_TRUSTED_ORIGINS="https://sklepzdoniczkami.pl,https://www.sklepzdoniczkami.pl"
+SITE_URL="https://sklepzdoniczkami.pl"
 
 if [[ "$EUID" -ne 0 ]]; then
     echo "Run with sudo, for example: sudo bash $0 production" >&2
@@ -35,21 +24,21 @@ if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
     exit 1
 fi
 
-APP_USER="$SUDO_USER"
-APP_GROUP="$(id -gn "$APP_USER")"
+APP_USER="sklepzdoniczkami-production"
+APP_GROUP="$APP_USER"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 ENV_DIR="/etc/sklepzdoniczkami"
 ENV_FILE="$ENV_DIR/app.env"
 UNIT_FILE="/etc/systemd/system/sklepzdoniczkami.service"
-MEDIA_ROOT="/var/lib/sklepzdoniczkami/media"
+MEDIA_ROOT="/var/lib/sklepzdoniczkami-production/media"
 SERVICE_TEMPLATE="$APP_DIR/deploy/sklepzdoniczkami.service"
 
 if [[ "$APP_DIR" == *[[:space:]]* || "$APP_DIR" == *"|"* ]]; then
     echo "Move the checkout to a path without spaces or '|' (recommended: /opt/sklepzdoniczkami)." >&2
     exit 1
 fi
-if [[ "$APP_DIR" == /home/* ]]; then
-    echo "Keep the service checkout outside /home (recommended: /opt/sklepzdoniczkami)." >&2
+if [[ "$APP_DIR" != "/opt/sklepzdoniczkami" ]]; then
+    echo "Place the production checkout at /opt/sklepzdoniczkami before running this installer." >&2
     exit 1
 fi
 if [[ ! -f "$APP_DIR/manage.py" || ! -f "$SERVICE_TEMPLATE" ]]; then
@@ -58,6 +47,10 @@ if [[ ! -f "$APP_DIR/manage.py" || ! -f "$SERVICE_TEMPLATE" ]]; then
 fi
 if [[ -e "$ENV_FILE" || -e "$UNIT_FILE" ]]; then
     echo "An existing self-hosting configuration was found; refusing to overwrite it." >&2
+    exit 1
+fi
+if getent passwd "$APP_USER" >/dev/null; then
+    echo "The dedicated service account $APP_USER already exists; inspect it before continuing." >&2
     exit 1
 fi
 if ! command -v apt-get >/dev/null 2>&1 || ! command -v systemctl >/dev/null 2>&1; then
@@ -154,6 +147,8 @@ if [[ -n "$ROLE_EXISTS" || -n "$DATABASE_EXISTS" ]]; then
     exit 1
 fi
 
+useradd --system --user-group --no-create-home --home-dir /nonexistent \
+    --shell /usr/sbin/nologin "$APP_USER"
 runuser -u postgres -- psql -v ON_ERROR_STOP=1 \
     -v app_role="$DATABASE_NAME" \
     -v app_password="$APP_PASSWORD" <<'SQL'
@@ -161,7 +156,7 @@ CREATE ROLE :"app_role" LOGIN PASSWORD :'app_password';
 SQL
 runuser -u postgres -- createdb --owner="$DATABASE_NAME" "$DATABASE_NAME"
 
-install -d -o root -g "$APP_GROUP" -m 0750 "$ENV_DIR"
+install -d -o root -g root -m 0711 "$ENV_DIR"
 install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$MEDIA_ROOT"
 cat > "$ENV_FILE" <<EOF
 APP_ENV=$APP_ENV
@@ -175,40 +170,30 @@ SITE_NAME=Sklepzdoniczkami
 SITE_URL=$SITE_URL
 MEDIA_ROOT=$MEDIA_ROOT
 EOF
-if [[ "$APP_ENV" == "development" ]]; then
-    printf '%s\n' 'EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend' >> "$ENV_FILE"
-fi
 chown root:"$APP_GROUP" "$ENV_FILE"
 chmod 0640 "$ENV_FILE"
 
-if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
-    runuser -u "$APP_USER" -- "$PYTHON" -m venv "$APP_DIR/.venv"
+if [[ -e "$APP_DIR/.venv" && ! -x "$APP_DIR/.venv/bin/python" ]]; then
+    echo "An incomplete virtual environment exists at $APP_DIR/.venv; inspect it before continuing." >&2
+    exit 1
 fi
-runuser -u "$APP_USER" -- "$APP_DIR/.venv/bin/python" -m pip install -r "$APP_DIR/requirements.txt"
+if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
+    "$PYTHON" -m venv "$APP_DIR/.venv"
+fi
+chown -R root:"$APP_GROUP" "$APP_DIR"
+chmod -R u=rwX,g=rX,o= "$APP_DIR"
+"$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 runuser -u "$APP_USER" -- env DJANGO_ENV_FILE="$ENV_FILE" \
     "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" migrate --noinput
-runuser -u "$APP_USER" -- env DJANGO_ENV_FILE="$ENV_FILE" \
+env DJANGO_ENV_FILE="$ENV_FILE" \
     "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput
-if [[ "$APP_ENV" == "development" ]]; then
-    runuser -u "$APP_USER" -- env DJANGO_ENV_FILE="$ENV_FILE" \
-        "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" createsuperuser
-fi
 
-sed \
-    -e "s|@APP_USER@|$APP_USER|g" \
-    -e "s|@APP_GROUP@|$APP_GROUP|g" \
-    -e "s|@APP_DIR@|$APP_DIR|g" \
-    "$SERVICE_TEMPLATE" > "$UNIT_FILE"
-chmod 0644 "$UNIT_FILE"
+install -o root -g root -m 0644 "$SERVICE_TEMPLATE" "$UNIT_FILE"
 systemctl daemon-reload
 systemctl enable --now sklepzdoniczkami.service
 
 echo
-echo "Created $APP_ENV database $DATABASE_NAME and started the local systemd service."
+echo "Created the production database $DATABASE_NAME and started the production service."
 echo "The service listens on 127.0.0.1:8000; PostgreSQL is not exposed publicly."
-if [[ "$APP_ENV" == "production" ]]; then
-    echo "This database is empty. Restore and verify a production backup before cutover."
-    echo "Payment/email secrets and the HTTPS reverse proxy must be configured separately."
-else
-    echo "Open http://127.0.0.1:8000/ on this machine."
-fi
+echo "Configure payment/email secrets and the HTTPS reverse proxy separately."
+echo "This installer is only for a new VPS; do not use it to modify existing environments."
