@@ -1,6 +1,7 @@
 from decimal import Decimal
 from io import StringIO
 from importlib import import_module
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -20,6 +21,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
+from .catalog import POT_CATEGORY_IMAGES, POT_CATEGORY_SLUGS
 from config.settings import (
     resolve_app_env,
     resolve_secure_ssl_redirect,
@@ -29,10 +31,12 @@ from .management.commands.bootstrap_first_admin import Command as BootstrapFirst
 from .management.commands.reset_production_admin_password import (
     Command as ResetProductionAdminPasswordCommand,
 )
+from .management.commands.load_sample_products import SAMPLE_PRODUCTS
 from .management.commands.seed_production_preview_catalog import (
     Command as SeedProductionPreviewCatalogCommand,
 )
 from .models import Category, Order, OrderItem, Product
+from .sample_catalog import SAMPLE_CATALOG
 from .services import release_order_inventory
 from .views import (
     ORDER_ACCESS_SALT,
@@ -55,6 +59,38 @@ class AppEnvironmentTests(SimpleTestCase):
 
     def test_environment_is_normalized(self):
         self.assertEqual(resolve_app_env(" PREPROD "), "preprod")
+
+
+class CatalogImageAssetTests(SimpleTestCase):
+    @staticmethod
+    def asset_exists(static_path):
+        relative_path = static_path.removeprefix("/static/")
+        asset_path = Path(__file__).parent / "static" / relative_path
+        return asset_path.is_file()
+
+    def test_every_category_and_sample_product_uses_a_checked_in_image(self):
+        self.assertEqual(set(POT_CATEGORY_IMAGES), set(POT_CATEGORY_SLUGS))
+        image_paths = list(POT_CATEGORY_IMAGES.values())
+        image_paths.extend(sample["category_image"] for sample in SAMPLE_CATALOG)
+        image_paths.extend(
+            product["image"]
+            for sample in SAMPLE_CATALOG
+            for product in sample["products"]
+        )
+        image_paths.extend(
+            f"sklepzdoniczkami/img/{product['image']}"
+            for product in SAMPLE_PRODUCTS
+        )
+
+        missing_images = [
+            path for path in image_paths if not self.asset_exists(path)
+        ]
+
+        self.assertEqual(
+            missing_images,
+            [],
+            f"Missing catalog image assets: {missing_images}",
+        )
 
 
 class SearchEngineOptimizationTests(TestCase):
@@ -215,7 +251,7 @@ class PreprodSeedCommandTests(TestCase):
         self.assertEqual(product.price, Decimal("49.90"))
         self.assertEqual(
             product.image,
-            "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+            "/static/sklepzdoniczkami/img/products/doniczka-ceramiczna.svg",
         )
 
         product.stock = 3
@@ -228,7 +264,7 @@ class PreprodSeedCommandTests(TestCase):
         self.assertEqual(product.price, Decimal("75.00"))
         self.assertEqual(
             product.image,
-            "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+            "/static/sklepzdoniczkami/img/products/doniczka-ceramiczna.svg",
         )
 
 
