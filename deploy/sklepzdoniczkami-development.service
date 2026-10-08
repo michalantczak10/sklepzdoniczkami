@@ -12,6 +12,7 @@ WorkingDirectory=/opt/sklepzdoniczkami-development
 EnvironmentFile=/etc/sklepzdoniczkami/development.env
 Environment=DJANGO_ENV_FILE=/etc/sklepzdoniczkami/development.env
 Environment=DJANGO_SETTINGS_MODULE=config.settings
+Environment=SECURE_SSL_REDIRECT=False
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=HOME=/tmp
 ExecStart=/opt/sklepzdoniczkami-development/.venv/bin/gunicorn --no-control-socket --workers 3 --bind 127.0.0.1:8001 --certfile /etc/sklepzdoniczkami/tls/localhost.crt --keyfile /etc/sklepzdoniczkami/tls/development.key config.wsgi:application

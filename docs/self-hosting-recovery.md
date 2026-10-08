@@ -56,9 +56,12 @@ curl.exe -k -sS -o NUL -w "preprod HTTP %{http_code}`n" https://localhost:8002/
 
 Oczekiwany status to `200`. `-k` jest tylko do sprawdzenia dostępności przez
 tunel SSH, nie do logowania ani wysyłania poufnych danych. Certyfikat dla
-`localhost` jest self-signed i przeglądarka może pokazać ostrzeżenie. Porty
-Django i PostgreSQL muszą pozostać niedostępne z Internetu. Hasła, tokeny
-płatnicze i prawdziwe dane klientów nie powinny być używane w development/preprod.
+`localhost` jest self-signed i przeglądarka może pokazać ostrzeżenie. Dev i
+preprod kończą TLS bezpośrednio w Gunicornie, dlatego ich jednostki ustawiają
+`SECURE_SSL_REDIRECT=False`; ustawienie `SECURE_PROXY_SSL_HEADER` dotyczy
+publicznej produkcji za Caddy. Porty Django i PostgreSQL muszą pozostać
+niedostępne z Internetu. Hasła, tokeny płatnicze i prawdziwe dane klientów nie
+powinny być używane w development/preprod.
 
 ## Kontrola stanu usług
 

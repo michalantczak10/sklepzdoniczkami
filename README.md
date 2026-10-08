@@ -47,6 +47,9 @@ Django w firewallu.
 Każda usługa ma osobny checkout i `.venv` pod `/opt`, odrębne konto systemowe
 bez logowania, katalog mediów pod `/var/lib` oraz własny plik środowiskowy.
 Uruchomiony proces development nie może czytać sekretów preprod ani produkcji.
+Dev i preprod kończą TLS bezpośrednio w Gunicornie i są dostępne tylko przez
+tunel SSH; ich jednostki systemd wyłączają przekierowanie HTTPS Django, które
+oczekuje nagłówka od reverse proxy. Ciasteczka pozostają secure przy `DEBUG=False`.
 
 ## Praca na branchach i promocja wydań
 
