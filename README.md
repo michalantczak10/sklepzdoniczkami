@@ -19,30 +19,30 @@ Produkcyjna baza nie zawiera przykładowego katalogu, zamówień ani klientów;
 nie seeduj do niej danych developerskich.
 
 Usługi development i preprod oraz PostgreSQL nie są wystawione publicznie.
-Łącz się do nich z Windows przez tunel SSH:
+Aby sprawdzić obie wersje sklepu, uruchom jedno polecenie z katalogu repozytorium:
 
 ```powershell
-ssh -N -i "$HOME\.ssh\sklep-vps" `
-  -L 8001:127.0.0.1:8001 `
-  -L 8002:127.0.0.1:8002 `
-  ubuntu@141.94.224.49
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test_ovh_store.ps1
 ```
 
-Pozostaw to okno otwarte i otwórz `https://localhost:8001/` (development)
-lub `https://localhost:8002/` (preprod). W drugim oknie PowerShell możesz
-sprawdzić samą odpowiedź HTTP:
+Skrypt otwiera bezpieczny tunel SSH, sprawdza, czy obie strony zwracają HTTP
+`200`, po czym otwiera je w przeglądarce. Po sprawdzeniu wróć do PowerShell
+i naciśnij Enter — tunel zostanie zamknięty. Możesz wskazać jedno środowisko:
 
 ```powershell
-curl.exe -k -sS -o NUL -w "dev HTTP %{http_code}`n" https://localhost:8001/
-curl.exe -k -sS -o NUL -w "preprod HTTP %{http_code}`n" https://localhost:8002/
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test_ovh_store.ps1 -Environment development
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test_ovh_store.ps1 -Environment preprod
 ```
 
-Oczekiwany status to `200`. Opcja `-k` służy tu wyłącznie do sprawdzenia
-dostępności przez tunel SSH; nie używaj jej do logowania ani przesyłania
-poufnych danych. Certyfikat localhost jest self-signed, więc przeglądarka może
-pokazać ostrzeżenie. Używaj wyłącznie kont testowych; nie wpisuj haseł
-produkcyjnych ani danych płatniczych. Nie otwieraj portu PostgreSQL ani portów
-Django w firewallu.
+Samo sprawdzenie dostępności bez otwierania przeglądarki wykonasz przez dodanie
+`-CheckOnly`.
+
+Domyślnie skrypt wybiera klucz SSH `~\.ssh\sklep-vps`, a jeśli go nie ma —
+`~\.ssh\sklepzdoniczkami_ovh_ed25519`. Inny klucz można podać parametrem
+`-SshKeyPath`. Przeglądarka może ostrzec o self-signed certyfikacie `localhost`;
+kontynuuj tylko dla tych lokalnych adresów i używaj wyłącznie kont testowych.
+Nie wpisuj haseł produkcyjnych ani danych płatniczych. Nie otwieraj portu
+PostgreSQL ani portów Django w firewallu.
 
 Każda usługa ma osobny checkout i `.venv` pod `/opt`, odrębne konto systemowe
 bez logowania, katalog mediów pod `/var/lib` oraz własny plik środowiskowy.
@@ -64,9 +64,9 @@ rejestrowanymi ani egzekwowanymi przez GitHub.
 
 1. Twórz branch `feature/...` z aktualnego `dev`, pracuj lokalnie i otwieraj PR
    do `dev`. Po dwóch niezależnych review AI i przejściu GitHub Actions (Django
-   check, testy Django i testy E2E) scalaj przez squash merge. CI uruchamia się na
-   GitHub-hosted runners, używa SQLite i nie wdraża aplikacji ani nie łączy się
-   z bazami OVH.
+   check, składnia skryptów, testy Django i testy E2E) scalaj przez squash merge.
+   CI uruchamia się na GitHub-hosted runners, używa SQLite i nie wdraża aplikacji
+   ani nie łączy się z bazami OVH.
 2. Po scaleniu PR pobierz aktualny `dev` i wdrażaj jego pełny SHA wyłącznie do
    developmentu. Z katalogu repozytorium uruchom:
    ```powershell
@@ -88,16 +88,24 @@ rejestrowanymi ani egzekwowanymi przez GitHub.
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $sha
    ```
    Skrypt blokuje produkcję, jeśli ten sam SHA nie przeszedł wcześniej
-   wdrożenia i testów health-check na preprod albo nie ma root-owned znacznika
-   potwierdzającego zweryfikowaną kopię bazy i mediów poza VPS. `Bypass`
-   dotyczy wyłącznie uruchomionego procesu PowerShell i nie zmienia trwałej
-   polityki komputera ani użytkownika.
+   wdrożenia i testów health-check na preprod albo brakuje root-owned znaczników
+   `/etc/sklepzdoniczkami/preprod-deployed-commit` i
+   `/etc/sklepzdoniczkami/production-backup-verified`. Drugi potwierdza
+   zweryfikowaną kopię bazy i mediów poza VPS. `Bypass` dotyczy wyłącznie
+   uruchomionego procesu PowerShell i nie zmienia trwałej polityki komputera ani
+   użytkownika.
 
 Jeśli `dev` i `main` się rozjadą, najpierw otwórz PR synchronizujący `main` do
 `dev`, rozwiąż konflikty i poczekaj na wymagane CI. Do czasu jego scalenia nie
 wdrażaj `dev`. Nie używaj force-push ani resetu branchy. Skrypt wdrożeniowy
 korzysta z lokalnego SSH i GitHub CLI; klucz SSH nie jest przekazywany do
-GitHub Actions.
+GitHub Actions. GitHub CLI zainstaluj i uwierzytelnij jednorazowo na Windows:
+
+```powershell
+winget install --id GitHub.cli --exact
+gh auth login --hostname github.com --git-protocol https --web
+gh auth status
+```
 
 Zmiany schematu dodawaj jako migracje Django w tym samym PR co kod. Uruchamiaj
 migracje osobno i wyłącznie dla docelowego środowiska. Dane developerskie,

@@ -87,27 +87,24 @@ force-push/resetu. Bieżący commit na każdym środowisku sprawdzisz poleceniem
 
 ## Dostęp do dev i preprod
 
-Na Windows uruchom tunel i pozostaw terminal otwarty:
+Z poziomu repozytorium w Windows otwórz obie strony i sprawdź ich dostępność
+jednym poleceniem:
 
 ```powershell
-ssh -N -i "$HOME\.ssh\sklep-vps" `
-  -L 8001:127.0.0.1:8001 `
-  -L 8002:127.0.0.1:8002 `
-  ubuntu@141.94.224.49
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test_ovh_store.ps1
 ```
 
-Pozostaw okno tunelu otwarte. Development: `https://localhost:8001/`;
-preprod: `https://localhost:8002/`. Status HTTP możesz sprawdzić w drugim
-oknie PowerShell:
+Skrypt otworzy tunel SSH, sprawdzi odpowiedź HTTP `200` i otworzy strony
+development (`https://localhost:8001/`) oraz preprod
+(`https://localhost:8002/`) w domyślnej przeglądarce. Po testach naciśnij Enter
+w oknie PowerShell, aby zamknąć tunel. Do pojedynczego środowiska dodaj
+`-Environment development` lub `-Environment preprod`. Domyślny klucz to
+`~\.ssh\sklep-vps`, z awaryjnym wyborem `~\.ssh\sklepzdoniczkami_ovh_ed25519`;
+możesz wskazać inny przez `-SshKeyPath`. Dodaj `-CheckOnly`, aby sprawdzić
+statusy bez uruchamiania przeglądarki.
 
-```powershell
-curl.exe -k -sS -o NUL -w "dev HTTP %{http_code}`n" https://localhost:8001/
-curl.exe -k -sS -o NUL -w "preprod HTTP %{http_code}`n" https://localhost:8002/
-```
-
-Oczekiwany status to `200`. `-k` jest tylko do sprawdzenia dostępności przez
-tunel SSH, nie do logowania ani wysyłania poufnych danych. Certyfikat dla
-`localhost` jest self-signed i przeglądarka może pokazać ostrzeżenie. Dev i
+Certyfikat dla `localhost` jest self-signed i przeglądarka może pokazać
+ostrzeżenie. Dev i
 preprod kończą TLS bezpośrednio w Gunicornie, dlatego ich jednostki ustawiają
 `SECURE_SSL_REDIRECT=False`; ustawienie `SECURE_PROXY_SSL_HEADER` dotyczy
 publicznej produkcji za Caddy. Porty Django i PostgreSQL muszą pozostać
@@ -172,6 +169,12 @@ udanym teście odtworzenia:
 sudo install -o root -g root -m 0600 /dev/null \
   /etc/sklepzdoniczkami/production-backup-verified
 ```
+
+Udane wdrożenie preprod zapisuje testowany SHA w
+`/etc/sklepzdoniczkami/preprod-deployed-commit`. Katalog `/etc/sklepzdoniczkami`
+oraz ten plik muszą pozostać root-owned i niezapisywalne przez konto usługi
+preprod. Nie umieszczaj znacznika w `/var/lib/sklepzdoniczkami-preprod`, bo
+konto tej usługi może modyfikować ten katalog.
 
 Po błędzie wdrożenie przywraca poprzedni kod i uruchamia usługę; **migracje bazy
 nie są automatycznie cofane**. Projektuj migracje kompatybilnie wstecz i przed
