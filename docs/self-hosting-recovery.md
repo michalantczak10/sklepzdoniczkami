@@ -12,11 +12,21 @@ Runbook dotyczy VPS OVH i nie zawiera sekretów.
   `127.0.0.1:8002`; dostęp zdalny jest przez SSH tunnel.
 - Publiczne porty VPS: SSH 22, HTTP 80 i HTTPS 443.
 
+Kontrola 2026-10-08: wszystkie trzy usługi Django, PostgreSQL i Caddy są
+aktywne; Caddy przechodzi walidację, a development, preprod i produkcja
+zwracają HTTP 200. PostgreSQL i porty Django są związane z loopbackiem.
+Filesystem `/` ma 9% zajętości. Nie znaleziono znacznika potwierdzonej kopii
+offsite produkcji, więc VPS nie jest gotowy do bezpiecznego przyjmowania
+zamówień.
+
 | Środowisko | Kod / Python | Usługa i baza | Dane trwałe |
 | --- | --- | --- | --- |
-| Development | `/opt/sklepzdoniczkami-development`, własne `.venv`, commit `da455da` z `main` | `sklepzdoniczkami-development.service`, `sklepzdoniczkami_dev` | `/var/lib/sklepzdoniczkami-development` |
-| Preprod | `/opt/sklepzdoniczkami-preprod`, własne `.venv`, commit `da455da` z `main` | `sklepzdoniczkami-preprod.service`, `sklepzdoniczkami_preprod` | `/var/lib/sklepzdoniczkami-preprod` |
+| Development | `/opt/sklepzdoniczkami-development`, własne `.venv`, commit `44a3d4d` | `sklepzdoniczkami-development.service`, `sklepzdoniczkami_dev` | `/var/lib/sklepzdoniczkami-development` |
+| Preprod | `/opt/sklepzdoniczkami-preprod`, własne `.venv`, commit `8cad84d` | `sklepzdoniczkami-preprod.service`, `sklepzdoniczkami_preprod` | `/var/lib/sklepzdoniczkami-preprod` |
 | Produkcja | `/opt/sklepzdoniczkami`, własne `.venv`, commit `adc66a9` | `sklepzdoniczkami.service`, `sklepzdoniczkami_prod` | `/var/lib/sklepzdoniczkami-production` |
+
+SHA w tabeli odzwierciedlają stan sprawdzony 2026-10-08; bieżący commit można
+odczytać poleceniem `git -C <ścieżka-checkoutu> rev-parse HEAD`.
 
 Każdy proces działa jako osobny systemowy użytkownik bez powłoki logowania.
 Produkcyjny Gunicorn używa wyłącznie roli PostgreSQL
@@ -104,9 +114,8 @@ możesz wskazać inny przez `-SshKeyPath`. Dodaj `-CheckOnly`, aby sprawdzić
 statusy bez uruchamiania przeglądarki.
 
 Certyfikat dla `localhost` jest self-signed i przeglądarka może pokazać
-ostrzeżenie. Dev i
-preprod kończą TLS bezpośrednio w Gunicornie, dlatego ich jednostki ustawiają
-`SECURE_SSL_REDIRECT=False`; ustawienie `SECURE_PROXY_SSL_HEADER` dotyczy
+ostrzeżenie. Dev i preprod kończą TLS bezpośrednio w Gunicornie, dlatego ich
+jednostki ustawiają `SECURE_SSL_REDIRECT=False`; ustawienie `SECURE_PROXY_SSL_HEADER` dotyczy
 publicznej produkcji za Caddy. Porty Django i PostgreSQL muszą pozostać
 niedostępne z Internetu. Hasła, tokeny płatnicze i prawdziwe dane klientów nie
 powinny być używane w development/preprod.

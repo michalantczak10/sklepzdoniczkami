@@ -53,37 +53,48 @@ oczekuje nagłówka od reverse proxy. Ciasteczka pozostają secure przy `DEBUG=F
 
 ## Praca na branchach i promocja wydań
 
-### Zasada PR i merge
+### Gałęzie i PR-y
 
-Każda zmiana trafia do `dev` lub `main` wyłącznie przez pull request. GitHub
-wymaga pozytywnych kontroli CI i rozwiązania wszystkich wątków review; bezpośredni
-push oraz force-push są zablokowane, także dla administratorów. Przed scaleniem
-autor zleca dwa niezależne przeglądy subagentom AI i scala dopiero po ich
-akceptacji oraz przejściu CI. Te przeglądy są procedurą zespołu, a nie approvals
-rejestrowanymi ani egzekwowanymi przez GitHub.
+Wystarczą **dwie stałe gałęzie: `dev` i `main`**. `dev` jest integracją zmian,
+`main` — kodem zatwierdzonym do wydania. Preprod i produkcja są środowiskami
+wdrażanymi po SHA, a nie osobnymi branchami; dodatkowe stałe branche
+`preprod`/`prod` nie poprawiłyby izolacji, za to zwiększyłyby ryzyko rozjazdu.
+Branche `feature/...`, `fix/...` i `chore/...` są krótkotrwałe i po PR powinny
+znikać. GitHub usuwa branche PR automatycznie po scaleniu.
 
-1. Twórz branch `feature/...` z aktualnego `dev`, pracuj lokalnie i otwieraj PR
-   do `dev`. Po dwóch niezależnych review AI i przejściu GitHub Actions (Django
-   check, składnia skryptów, testy Django i testy E2E) scalaj przez squash merge.
-   CI uruchamia się na GitHub-hosted runners, używa SQLite i nie wdraża aplikacji
-   ani nie łączy się z bazami OVH.
-2. Po scaleniu PR pobierz aktualny `dev` i wdrażaj jego pełny SHA wyłącznie do
-   developmentu. Z katalogu repozytorium uruchom:
+Ochrona `dev` i `main` wymaga przejścia `Django tests`, `End-to-end tests
+(Playwright)` oraz rozwiązania wątków review; bezpośredni push i force-push są
+zablokowane, także dla administratorów. Wymagane approvals wynoszą `0`, więc
+żaden człowiek nie musi zatwierdzać PR-a. Dwa niezależne przeglądy AI mogą być
+użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje ich jako warunku merge.
+
+1. Zaczynaj `feature/...`, `fix/...` lub `chore/...` od aktualnego `dev`.
+   Otwórz PR do `dev`; poczekaj na oba wymagane checki i rozwiąż wszystkie
+   wątki. Dla zwykłych zmian scalaj przez squash, aby historia `dev` była
+   czytelna. CI uruchamia testy na GitHub-hosted runners z SQLite i nie wdraża
+   aplikacji ani nie łączy się z bazami OVH.
+2. Po merge wdrażaj pełny SHA `origin/dev` wyłącznie na development:
    ```powershell
-   git fetch origin
+   git fetch --prune origin
    $sha = (git rev-parse origin/dev).Trim()
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
    ```
-   Skrypt przed połączeniem sprawdza, że commit należy do właściwej gałęzi i że
-   wymagane checki Django oraz Playwright zakończyły się sukcesem.
-3. Po testach akceptacyjnych otwieraj PR `dev` -> `main`. Po scaleniu wybierz
-   pełny SHA z `main` i wdrażaj go najpierw na preprod:
+   Skrypt sprawdza, czy SHA należy do właściwej gałęzi i czy wymagane checki
+   zakończyły się sukcesem.
+3. Po testach akceptacyjnych otwieraj PR `dev` -> `main`. Scalaj go przez
+   **merge commit**, aby zachować relację historii gałęzi. Po scaleniu otwórz
+   synchronizujący PR `main` -> `dev` i również poczekaj na wymagane checki.
+   Dzięki temu kod obu branchy pozostaje identyczny, a `main` jest przodkiem
+   `dev`. Taki synchronizujący PR może nie zmieniać plików — przenosi historię
+   merge’a i nadal przechodzi przez ochronę branchy. Nie kontynuuj promocji
+   kolejnego wydania, dopóki synchronizacja nie zostanie scalona.
+4. Wybierz pełny SHA z `main` i wdrażaj go najpierw na preprod:
    ```powershell
-   git fetch origin
+   git fetch --prune origin
    $sha = (git rev-parse origin/main).Trim()
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment preprod -Commit $sha
    ```
-4. Po akceptacji preprod wdrażaj **ten sam SHA** na produkcję:
+5. Po akceptacji preprod wdrażaj **ten sam SHA** na produkcję:
    ```powershell
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $sha
    ```
@@ -95,17 +106,25 @@ rejestrowanymi ani egzekwowanymi przez GitHub.
    uruchomionego procesu PowerShell i nie zmienia trwałej polityki komputera ani
    użytkownika.
 
-Jeśli `dev` i `main` się rozjadą, najpierw otwórz PR synchronizujący `main` do
-`dev`, rozwiąż konflikty i poczekaj na wymagane CI. Do czasu jego scalenia nie
-wdrażaj `dev`. Nie używaj force-push ani resetu branchy. Skrypt wdrożeniowy
-korzysta z lokalnego SSH i GitHub CLI; klucz SSH nie jest przekazywany do
-GitHub Actions. GitHub CLI zainstaluj i uwierzytelnij jednorazowo na Windows:
+Nagły hotfix produkcyjny zaczynaj od `main`, scalaj PR-em do `main`, sprawdź go
+na preprod i wdrażaj ten sam SHA; następnie otwórz PR synchronizujący `main` do
+`dev` przed wznowieniem zwykłej pracy. Przy nieoczekiwanym rozjechaniu branchy
+nie wdrażaj `dev`, dopóki synchronizacja przez PR i wymagane CI nie przejdą.
+Nie używaj force-push ani resetu branchy. Skrypt wdrożeniowy korzysta z
+lokalnego SSH i GitHub CLI; klucz SSH nie trafia do GitHub Actions. GitHub CLI
+zainstaluj i uwierzytelnij jednorazowo na Windows:
 
 ```powershell
 winget install --id GitHub.cli --exact
 gh auth login --hostname github.com --git-protocol https --web
 gh auth status
 ```
+
+Dependabot sprawdza co tydzień aktualizacje Pythona i GitHub Actions, tworząc
+zwykłe PR-y do `dev`. Alerty podatności i automatyczne PR-y poprawek
+bezpieczeństwa są włączone; poprawki bezpieczeństwa mogą trafiać bezpośrednio
+do domyślnego `main`, ale również muszą przejść wymagane CI, preprod i późniejszą
+synchronizację `main` -> `dev`. Nie włączaj auto-merge.
 
 Zmiany schematu dodawaj jako migracje Django w tym samym PR co kod. Uruchamiaj
 migracje osobno i wyłącznie dla docelowego środowiska. Dane developerskie,
@@ -153,6 +172,9 @@ produkt, cenę, stan i zdjęcie przed publikacją w produkcji.
 - Wartości środowiskowe mają jawne nazwy baz i wymagane klucze dla preprod/prod;
   statyczne URL-e zaczynają się od `/static/`, by działały także na zagnieżdżonych
   ścieżkach produktów.
+- `.gitignore` wyklucza lokalne `.env`, bazy SQLite, `media/` i artefakty kopii.
+  Mogą istnieć w roboczym katalogu, ale nie dodawaj ich do Git ani nie przesyłaj
+  w PR; przechowuj kopie poza repozytorium i szyfruj je.
 
 ## Operacje i odzyskiwanie
 
@@ -163,9 +185,10 @@ Runbook VPS, usług, wdrożeń i obecnych ograniczeń odzyskiwania:
 zapasowej poza serwerem. Nie przechowuj tam jedynej kopii zamówień ani danych
 klientów; przed sprzedażą skonfiguruj niezależną kopię i przetestuj odtworzenie.
 
-**Gotowość sprzedażowa:** ostatni odczyt produkcji wykazał wyłączony Stripe,
-nie skonfigurowany SMTP, zero aktywnych produktów i zero produktów ze stanem
-większym od zera. Odpowiedź strony HTTP 200 potwierdza tylko dostępność
-aplikacji. Nie przyjmuj zamówień, dopóki nie skonfigurujesz płatności live i
-webhooka Stripe, poczty transakcyjnej, rzeczywistego katalogu ze stanami oraz
-zaszyfrowanych kopii bazy i mediów z przetestowanym odtworzeniem.
+**Gotowość sprzedażowa (kontrola 2026-10-08):** Stripe jest wyłączony, SMTP
+nie jest skonfigurowany, produkcyjna baza ma zero aktywnych produktów i zero
+produktów ze stanem większym od zera, a znacznik zweryfikowanej kopii offsite
+nie istnieje. Odpowiedź HTTP 200 potwierdza tylko dostępność aplikacji. Nie
+przyjmuj zamówień, dopóki nie skonfigurujesz płatności live i webhooka Stripe,
+poczty transakcyjnej, prawdziwego katalogu ze stanami oraz zaszyfrowanych kopii
+bazy i mediów z przetestowanym odtworzeniem.
