@@ -29,25 +29,29 @@ SHA wdrożenia jest celowo odczytywany z checkoutu, a nie utrzymywany w tabeli,
 sprawdzisz poleceniem `git -C <ścieżka-checkoutu> rev-parse HEAD`.
 
 Każdy proces działa jako osobny systemowy użytkownik bez powłoki logowania.
-**Odstępstwo wykryte 2026-10-08:** produkcyjny Gunicorn łączy się z PostgreSQL
-jako `sklepzdoniczkami_prod`, właściciel bazy; rola
-`sklepzdoniczkami_prod_web_limited` nie istniała. To daje aplikacji zbędne
-uprawnienia właściciela. Nie wdrażaj zmian produkcyjnych ani nie otwieraj sklepu,
-dopóki osobna rola runtime z ograniczonymi uprawnieniami nie zostanie
-skonfigurowana i sprawdzona.
+Początkowa kontrola 2026-10-08 wykazała, że Gunicorn używał właściciela
+produkcyjnej bazy. Konfigurację naprawiono: Gunicorn łączy się teraz jako
+`sklepzdoniczkami_prod_web_limited`, a właściciel
+`sklepzdoniczkami_prod` jest używany przez konto migracyjne. Rola runtime nie
+ma uprawnień tworzenia ról, baz, obiektów w schemacie ani tabel tymczasowych;
+ma wyłącznie `CONNECT`, `USAGE` oraz CRUD na tabelach i sekwencjach aplikacji.
+Ograniczenia sprawdzono dla wszystkich 14 tabel i 13 sekwencji. Transakcyjny
+test CRUD katalogu, kont, grup, zamówień, pozycji i sesji zakończył się
+rollbackiem; żadne testowe rekordy nie pozostały. Django `check`, kontrola
+aktualności migracji oraz lokalny HTTPS produkcji również przeszły.
 
 Konto systemowe `sklepzdoniczkami-migrator` i plik `migration.env` zostały
 utworzone 2026-10-08. Konto nie ma powłoki logowania; plik jest własnością roota,
 ma tryb `0640` i grupę migracyjną. Zawiera poświadczenia właściciela bazy,
-potrzebne do migracji i odtwarzania. `app.env` nadal zawiera poświadczenie tej
-samej roli właściciela, a więc nie zapewnia jeszcze izolacji uprawnień aplikacji.
-Konto Gunicorna nie należy do grupy migracyjnej. Nie pokazuj ani nie kopiuj
-zawartości tych plików. Katalog `/etc/sklepzdoniczkami` pozwala na przejście do
-jawnie znanej ścieżki, ale nie na listowanie. Checkouts i venv są czytelne dla
-usługi oraz konta migracyjnego; lokalny checkout `.env` nie jest używany i
-instalator odrzuca go, jeśli jest czytelny grupowo lub publicznie. Systemd
-ogranicza dostęp procesu m.in. przez `ProtectSystem`, `ProtectHome`,
-`PrivateTmp`, `NoNewPrivileges` i osobne `StateDirectory`.
+potrzebne do migracji i odtwarzania. `app.env` zawiera odrębne poświadczenie
+ograniczonej roli runtime. Konto Gunicorna nie należy do grupy migracyjnej.
+Nie pokazuj ani nie kopiuj zawartości tych plików. Katalog
+`/etc/sklepzdoniczkami` pozwala na przejście do jawnie znanej ścieżki, ale nie
+na listowanie. Checkouts i venv są czytelne dla usługi oraz konta migracyjnego;
+lokalny checkout `.env` nie jest używany i instalator odrzuca go, jeśli jest
+czytelny grupowo lub publicznie. Systemd ogranicza dostęp procesu m.in. przez
+`ProtectSystem`, `ProtectHome`, `PrivateTmp`, `NoNewPrivileges` i osobne
+`StateDirectory`.
 
 Instalator `scripts/setup_ubuntu_selfhost.sh` jest przeznaczony wyłącznie dla
 nowego VPS produkcyjnego. Odmawia pracy, jeśli znajdzie istniejącą produkcyjną
