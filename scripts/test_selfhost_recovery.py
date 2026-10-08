@@ -28,6 +28,18 @@ from scripts.restore_github_production_backup import (
 
 
 class SelfHostRecoveryTests(unittest.TestCase):
+    def test_deploy_script_requires_every_mandatory_ci_check(self):
+        deploy_script = Path(__file__).with_name("deploy_ovh.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        for required_check in (
+            "Django tests",
+            "End-to-end tests (Playwright)",
+            "PostgreSQL tests",
+        ):
+            self.assertIn(f"'{required_check}'", deploy_script)
+
     def test_production_gate_uses_root_controlled_preprod_marker(self):
         deploy_script = Path(__file__).with_name("deploy_ovh.sh").read_text(
             encoding="utf-8"

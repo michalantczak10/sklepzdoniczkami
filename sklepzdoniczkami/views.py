@@ -784,8 +784,3 @@ def profile_view(request):
         "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/profile.html", context)
-
-
-class CategoryListView(ProductListView):
-    def get_queryset(self):
-        return super().get_queryset()

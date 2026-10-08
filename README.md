@@ -81,6 +81,7 @@ ich jako warunku merge.
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
    ```
    Skrypt sprawdza, czy SHA należy do właściwej gałęzi i czy wymagane checki
+   `Django tests`, `End-to-end tests (Playwright)` i `PostgreSQL tests`
    zakończyły się sukcesem.
 3. Po testach akceptacyjnych otwieraj PR `dev` -> `main`. Scalaj go przez
    **merge commit**, aby zachować relację historii gałęzi. Po scaleniu otwórz
@@ -170,6 +171,10 @@ produkt, cenę, stan i zdjęcie przed publikacją w produkcji.
 - Zachowano stare JPG, ponieważ służą jeszcze za ilustracje strony głównej i
   nieprodukcyjnego katalogu preview; ich źródła/licencje są w
   [README_IMAGES.md](README_IMAGES.md).
+- Usunięto nieużywaną klasę `CategoryListView`, identyczny duplikat
+  `Caddyfile.example`, dwa nieużywane zdjęcia oraz sześć kopii obrazów z
+  `docs/sample-images/`; używane zdjęcia pozostają w katalogu statycznym
+  aplikacji.
 - Wartości środowiskowe mają jawne nazwy baz i wymagane klucze dla preprod/prod;
   statyczne URL-e zaczynają się od `/static/`, by działały także na zagnieżdżonych
   ścieżkach produktów.
@@ -185,6 +190,9 @@ Runbook VPS, usług, wdrożeń i obecnych ograniczeń odzyskiwania:
 **Pozostałe ryzyko:** na VPS nie ma skonfigurowanej ani przetestowanej kopii
 zapasowej poza serwerem. Nie przechowuj tam jedynej kopii zamówień ani danych
 klientów; przed sprzedażą skonfiguruj niezależną kopię i przetestuj odtworzenie.
+Pozostałe artefakty GitHub pochodzą ze starego workflow tworzącego kopię
+wyłącznie bazy Neon; nie obejmują bieżącej bazy OVH ani mediów i nie są
+potwierdzeniem aktualnego backupu.
 
 **Gotowość sprzedażowa (kontrola 2026-10-08):** Stripe jest wyłączony, SMTP
 nie jest skonfigurowany, produkcyjna baza ma zero aktywnych produktów i zero
