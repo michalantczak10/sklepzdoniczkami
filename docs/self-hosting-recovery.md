@@ -145,7 +145,8 @@ sudo systemctl reload caddy
 
 Uruchamiaj wdrożenia z Windows w katalogu repozytorium przez
 `scripts/deploy_ovh.ps1`. Skrypt weryfikuje lokalnie, że commit należy do
-oczekiwanej gałęzi i oba wymagane checki GitHub Actions zakończyły się
+oczekiwanej gałęzi i wszystkie trzy wymagane checki GitHub Actions (`Django
+tests`, `End-to-end tests (Playwright)` i `PostgreSQL tests`) zakończyły się
 sukcesem. Łączy się do VPS przy użyciu lokalnego klucza SSH; nie dodawaj tego
 klucza do GitHub ani do CI.
 
@@ -199,7 +200,11 @@ danych development -> preprod/produkcja. Nie używaj w produkcji komend
 ## Kopie zapasowe i odzyskiwanie
 
 Automatyczna, niezależna kopia bazy PostgreSQL i `media/` poza VPS **nie jest
-skonfigurowana**. Lokalna kopia na tym samym serwerze nie chroni przed utratą
+skonfigurowana**. Usunięty workflow GitHub Actions tworzył wyłącznie szyfrowane
+kopie bazy ze starego, przypiętego endpointu Neon; nie obejmował bazy OVH ani
+plików `media/`. Zachowane artefakty traktuj wyłącznie jako historyczne i nie
+używaj ich jako potwierdzenia backupu ani aktualnego źródła odtworzenia. Lokalna
+kopia na tym samym serwerze nie chroni przed utratą
 VPS. Zanim produkcja zacznie przechowywać zamówienia lub dane klientów,
 skonfiguruj zaszyfrowane kopie poza serwerem, retencję, monitoring i test
 odtworzenia do osobnej bazy. Do tego czasu nie wykonuj migracji produkcyjnej,

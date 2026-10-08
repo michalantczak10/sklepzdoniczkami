@@ -48,7 +48,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not read GitHub check runs for $Commit."
 }
 $checkRuns = $checksJson | ConvertFrom-Json
-foreach ($requiredCheck in @('Django tests', 'End-to-end tests (Playwright)')) {
+foreach ($requiredCheck in @(
+    'Django tests',
+    'End-to-end tests (Playwright)',
+    'PostgreSQL tests'
+)) {
     $latestCheck = $checkRuns.check_runs |
         Where-Object { $_.name -eq $requiredCheck } |
         Sort-Object -Property started_at |
