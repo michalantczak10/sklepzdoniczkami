@@ -1,5 +1,3 @@
-import os
-
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connections, transaction
@@ -60,7 +58,6 @@ class Command(BaseCommand):
     def validate_production_database():
         database = connections["default"]
         database_settings = database.settings_dict
-        expected_host = os.environ.get("PRODUCTION_DATABASE_HOST", "").strip()
         connection_options = {
             str(option).lower() for option in database_settings.get("OPTIONS", {})
         }
@@ -68,8 +65,7 @@ class Command(BaseCommand):
             database_settings["ENGINE"] != "django.db.backends.postgresql"
             or database_settings["NAME"] != PRODUCTION_DATABASE_NAME
             or database_settings["USER"] != PRODUCTION_DATABASE_USER
-            or not expected_host
-            or database_settings["HOST"].lower() != expected_host.lower()
+            or database_settings["HOST"] not in {"127.0.0.1", "localhost", "::1"}
             or database_settings.get("PORT") not in {None, "", 5432, "5432"}
             or connection_options.intersection(ROUTING_OPTIONS)
         ):
@@ -101,8 +97,8 @@ class Command(BaseCommand):
                 [list(ELEVATED_ROLE_NAMES)],
             )
             (
-                can_create_objects,
-                can_create_schemas,
+                can_create_schema_objects,
+                can_create_database,
                 can_create_databases,
                 can_create_roles,
                 is_superuser,
@@ -118,7 +114,7 @@ class Command(BaseCommand):
             raise CommandError(
                 "The active database connection does not match the production target."
             )
-        if can_create_objects or can_create_schemas or any(
+        if can_create_schema_objects or can_create_database or any(
             (
                 can_create_databases,
                 can_create_roles,

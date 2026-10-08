@@ -1,28 +1,38 @@
 [Unit]
 Description=Sklepzdoniczkami Django application
-After=network.target postgresql.service
+After=network-online.target postgresql.service
+Wants=network-online.target
 Requires=postgresql.service
 
 [Service]
 Type=simple
-User=@APP_USER@
-Group=@APP_GROUP@
-WorkingDirectory=@APP_DIR@
+User=sklepzdoniczkami-production
+Group=sklepzdoniczkami-production
+WorkingDirectory=/opt/sklepzdoniczkami
 EnvironmentFile=/etc/sklepzdoniczkami/app.env
 Environment=DJANGO_ENV_FILE=/etc/sklepzdoniczkami/app.env
 Environment=DJANGO_SETTINGS_MODULE=config.settings
+Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=HOME=/tmp
-ExecStart=@APP_DIR@/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 config.wsgi:application
+ExecStart=/opt/sklepzdoniczkami/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 config.wsgi:application
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=30
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-StateDirectory=sklepzdoniczkami
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StateDirectory=sklepzdoniczkami-production
 StateDirectoryMode=0750
-ReadWritePaths=/var/lib/sklepzdoniczkami
+ReadWritePaths=/var/lib/sklepzdoniczkami-production
 
 [Install]
 WantedBy=multi-user.target

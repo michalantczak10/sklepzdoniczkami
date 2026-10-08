@@ -138,17 +138,17 @@ class ProductListView(ListView):
             for sample in SAMPLE_CATALOG
         }
         card_details.update({
-            "ceramiczne": {
-                "image": "sklepzdoniczkami/img/products/pot-ceramic.jpg",
-                "description": "Szkliwione wykończenia i ponadczasowe kształty.",
+            "betonowe": {
+                "image": "sklepzdoniczkami/img/categories/betonowe.svg",
+                "description": "Stabilne, minimalistyczne formy o kamiennym charakterze.",
+            },
+            "drewniane": {
+                "image": "sklepzdoniczkami/img/categories/drewniane.svg",
+                "description": "Naturalne usłojenie i ciepłe odcienie drewna.",
             },
             "plastikowe": {
-                "image": "sklepzdoniczkami/img/products/pot-plastic.jpg",
-                "description": "Lekkie, praktyczne i dostępne w wielu kolorach.",
-            },
-            "cementowe": {
-                "image": "sklepzdoniczkami/img/products/pot-cement.jpg",
-                "description": "Proste formy o surowym, nowoczesnym charakterze.",
+                "image": "sklepzdoniczkami/img/categories/plastikowe.svg",
+                "description": "Lekkie, praktyczne doniczki do domu i na balkon.",
             },
         })
         context["categories"] = categories

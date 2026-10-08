@@ -11,9 +11,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts import restore_github_production_backup
+from scripts.postgres_utils import postgres_environment
 from scripts.restore_github_production_backup import (
     EXPECTED_DATABASE,
     EXPECTED_FILES,
+    MIGRATION_CONFIG_FILE,
+    MIGRATION_DATABASE_USER,
+    MIGRATION_SYSTEM_USER,
+    RUNTIME_DATABASE_USER,
+    grant_runtime_privileges,
+    migration_command,
     read_backup_package,
     verify_and_decrypt,
     verify_local_target,
@@ -37,7 +44,9 @@ class SelfHostRecoveryTests(unittest.TestCase):
             destination.mkdir()
             read_backup_package(package, destination)
 
-            self.assertEqual({path.name for path in destination.iterdir()}, EXPECTED_FILES)
+            self.assertEqual(
+                {path.name for path in destination.iterdir()}, EXPECTED_FILES
+            )
 
     def test_backup_package_rejects_unexpected_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -64,7 +73,9 @@ class SelfHostRecoveryTests(unittest.TestCase):
             (directory / "backup.hmac.keyid").write_text(
                 hashlib.sha256(hmac_key).hexdigest()[:8], encoding="ascii"
             )
-            with patch.object(restore_github_production_backup.subprocess, "run") as run:
+            with patch.object(
+                restore_github_production_backup.subprocess, "run"
+            ) as run:
                 with self.assertRaises(ValueError):
                     verify_and_decrypt(directory, "encryption-key", "wrong-key")
                 run.assert_not_called()
@@ -81,6 +92,66 @@ class SelfHostRecoveryTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "non-local"):
             verify_local_target(configuration)
+
+    def test_local_target_requires_owner_credentials(self):
+        configuration = {
+            "APP_ENV": "production",
+            "DATABASE_NAME_PRODUCTION": EXPECTED_DATABASE,
+            "DATABASE_URL_PRODUCTION": (
+                "postgresql://sklepzdoniczkami_prod_web_limited:secret@"
+                f"127.0.0.1:5432/{EXPECTED_DATABASE}"
+            ),
+        }
+
+        with self.assertRaisesRegex(ValueError, "non-local"):
+            verify_local_target(configuration)
+
+    def test_local_restore_environment_uses_database_owner_credentials(self):
+        configuration = {
+            "APP_ENV": "production",
+            "DATABASE_NAME_PRODUCTION": EXPECTED_DATABASE,
+            "DATABASE_URL_PRODUCTION": (
+                f"postgresql://{MIGRATION_DATABASE_USER}:owner-secret@"
+                f"127.0.0.1:5432/{EXPECTED_DATABASE}"
+            ),
+        }
+
+        connection = verify_local_target(configuration)
+        environment = postgres_environment(connection)
+
+        self.assertEqual(connection["user"], MIGRATION_DATABASE_USER)
+        self.assertEqual(environment["PGUSER"], MIGRATION_DATABASE_USER)
+        self.assertEqual(environment["PGPASSWORD"], "owner-secret")
+
+    def test_restore_migrations_use_private_migrator_configuration(self):
+        command = migration_command()
+
+        self.assertEqual(command[:4], ["runuser", "-u", MIGRATION_SYSTEM_USER, "--"])
+        self.assertIn(f"DJANGO_ENV_FILE={MIGRATION_CONFIG_FILE}", command)
+        self.assertIn("migrate", command)
+        self.assertEqual(MIGRATION_DATABASE_USER, EXPECTED_DATABASE)
+
+    def test_restore_reapplies_runtime_dml_privileges_without_ddl(self):
+        with patch(
+            "scripts.restore_github_production_backup.subprocess.run"
+        ) as run:
+            grant_runtime_privileges({"PGUSER": MIGRATION_DATABASE_USER})
+
+        command = run.call_args.args[0]
+        privilege_sql = command[-1]
+        self.assertIn(
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public "
+            f"TO {RUNTIME_DATABASE_USER}",
+            " ".join(privilege_sql.split()),
+        )
+        self.assertIn(
+            f"GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public "
+            f"TO {RUNTIME_DATABASE_USER}",
+            " ".join(privilege_sql.split()),
+        )
+        self.assertIn("ALTER DEFAULT PRIVILEGES", privilege_sql)
+        self.assertNotIn(f"GRANT CREATE ON SCHEMA public TO {RUNTIME_DATABASE_USER}", privilege_sql)
+        run.assert_called_once()
 
     def test_integrity_verified_backup_is_decrypted_and_listed(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -107,9 +178,7 @@ class SelfHostRecoveryTests(unittest.TestCase):
                 "scripts.restore_github_production_backup.subprocess.run",
                 side_effect=fake_run,
             ) as run:
-                result = verify_and_decrypt(
-                    directory, "encryption-key", encoded_hmac_key
-                )
+                result = verify_and_decrypt(directory, "encryption-key", encoded_hmac_key)
 
             self.assertEqual(result.read_bytes(), b"valid PostgreSQL dump")
             self.assertEqual(run.call_count, 2)

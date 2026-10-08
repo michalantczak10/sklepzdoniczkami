@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}{% if active_category %}{{ active_category.name }}{% else %}Doniczki do domu, na balkon i taras{% endif %} | Sklepzdoniczkami{% endblock %}
-{% block meta_description %}{% if active_category %}Odkryj kolekcję doniczek: {{ active_category.name|lower }}. Wybierz formę, która pasuje do Twojego wnętrza.{% else %}Poznaj doniczki do domu, na balkon i taras. Wybierz spośród ceramicznych, plastikowych i cementowych form.{% endif %}{% endblock %}
+{% block meta_description %}{% if active_category %}Odkryj kolekcję doniczek: {{ active_category.name|lower }}. Wybierz formę, która pasuje do Twojego wnętrza.{% else %}Poznaj doniczki do domu, na balkon i taras. Wybierz spośród betonowych, drewnianych i plastikowych form.{% endif %}{% endblock %}
 {% block og_title %}{% if active_category %}{{ active_category.name }} | Sklepzdoniczkami{% else %}Doniczki do domu, na balkon i taras | Sklepzdoniczkami{% endif %}{% endblock %}
 {% block og_description %}{% if active_category %}Odkryj kolekcję doniczek {{ active_category.name|lower }} w Sklepzdoniczkami.{% else %}Doniczki do domu, na balkon i taras w różnych formach i materiałach.{% endif %}{% endblock %}
 {% block canonical_url %}{% if active_category %}{{ site_url }}{{ active_category.get_absolute_url }}{% else %}{{ site_url }}/{% endif %}{% endblock %}
@@ -16,7 +16,7 @@
                 <div class="hero-copy">
                     <span class="eyebrow"><span class="eyebrow-dot"></span> Doniczki do Twojego wnętrza</span>
                     <h1>Forma, która<br><em>dopełnia dom.</em></h1>
-                    <p>Doniczki w różnych materiałach i rozmiarach — do domu, na balkon i taras.</p>
+                    <p>Doniczki betonowe, drewniane i plastikowe — do domu, na balkon i taras.</p>
                     <a class="btn" href="#produkty">Odkryj kolekcję <span aria-hidden="true">→</span></a>
                     <div class="hero-note"><span class="hero-note-icon">✳</span> Praktyczne formy, ponadczasowy styl.</div>
                 </div>
@@ -26,7 +26,7 @@
             </section>
 
             <div class="benefits" aria-label="Nasze zalety">
-                <div><span class="benefit-icon">◌</span><span><strong>Różne materiały</strong><small>Ceramiczne, plastikowe i cementowe</small></span></div>
+                <div><span class="benefit-icon">◌</span><span><strong>Różne materiały</strong><small>Beton, drewno i tworzywo</small></span></div>
                 <div><span class="benefit-icon">♧</span><span><strong>Do Twojej przestrzeni</strong><small>Doniczki do domu i na balkon</small></span></div>
                 <div><span class="benefit-icon">⌂</span><span><strong>Wiele zastosowań</strong><small>Wybierz rozmiar i formę dla siebie</small></span></div>
             </div>

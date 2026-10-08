@@ -23,13 +23,40 @@ else:
 
 
 EXPECTED_DATABASE = "sklepzdoniczkami_prod"
+MIGRATION_DATABASE_USER = "sklepzdoniczkami_prod"
+MIGRATION_SYSTEM_USER = "sklepzdoniczkami-migrator"
+RUNTIME_DATABASE_USER = "sklepzdoniczkami_prod_web_limited"
 EXPECTED_FILES = {
     "backup.dump.enc",
     "backup.dump.enc.hmac",
     "backup.hmac.keyid",
 }
-CONFIG_FILE = Path("/etc/sklepzdoniczkami/app.env")
+MIGRATION_CONFIG_FILE = Path("/etc/sklepzdoniczkami/migration.env")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_PRIVILEGE_SQL = f"""
+REVOKE ALL PRIVILEGES ON DATABASE {EXPECTED_DATABASE} FROM PUBLIC;
+REVOKE CREATE, TEMPORARY ON DATABASE {EXPECTED_DATABASE} FROM {RUNTIME_DATABASE_USER};
+GRANT CONNECT ON DATABASE {EXPECTED_DATABASE} TO {RUNTIME_DATABASE_USER};
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM {RUNTIME_DATABASE_USER};
+GRANT USAGE ON SCHEMA public TO {RUNTIME_DATABASE_USER};
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {RUNTIME_DATABASE_USER};
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+    TO {RUNTIME_DATABASE_USER};
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {RUNTIME_DATABASE_USER};
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public
+    TO {RUNTIME_DATABASE_USER};
+ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_DATABASE_USER} IN SCHEMA public
+    REVOKE ALL ON TABLES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_DATABASE_USER} IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {RUNTIME_DATABASE_USER};
+ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_DATABASE_USER} IN SCHEMA public
+    REVOKE ALL ON SEQUENCES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_DATABASE_USER} IN SCHEMA public
+    GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO {RUNTIME_DATABASE_USER};
+"""
 
 
 def read_backup_package(package_path, destination):
@@ -122,10 +149,43 @@ def verify_local_target(configuration):
         connection["dbname"] != EXPECTED_DATABASE
         or connection["host"] not in {"127.0.0.1", "localhost", "::1"}
         or connection["port"] != 5432
-        or connection["user"] != EXPECTED_DATABASE
+        or connection["user"] != MIGRATION_DATABASE_USER
     ):
         raise ValueError("Refusing to restore to a non-local or unexpected database.")
     return connection
+
+
+def migration_command(
+    repository_root=REPOSITORY_ROOT, config_file=MIGRATION_CONFIG_FILE
+):
+    return [
+        "runuser",
+        "-u",
+        MIGRATION_SYSTEM_USER,
+        "--",
+        "env",
+        f"DJANGO_ENV_FILE={config_file}",
+        "DJANGO_SETTINGS_MODULE=config.settings",
+        str(repository_root / ".venv/bin/python"),
+        str(repository_root / "manage.py"),
+        "migrate",
+        "--noinput",
+    ]
+
+
+def grant_runtime_privileges(environment):
+    subprocess.run(
+        [
+            "psql",
+            "--set=ON_ERROR_STOP=1",
+            f"--dbname={EXPECTED_DATABASE}",
+            f"--command={RUNTIME_PRIVILEGE_SQL}",
+        ],
+        env=environment,
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+    )
 
 
 def verify_restored_data(connection):
@@ -163,17 +223,19 @@ def main():
             "restore it to the isolated local production database."
         )
     )
-    parser.add_argument("package", type=Path, help="Path to the downloaded encrypted .tgz package")
+    parser.add_argument(
+        "package", type=Path, help="Path to the downloaded encrypted .tgz package"
+    )
     arguments = parser.parse_args()
 
     if os.geteuid() != 0:
         parser.error("Run with sudo so the script can stop and start the systemd service.")
-    if not CONFIG_FILE.is_file():
-        parser.error(f"Private application config not found: {CONFIG_FILE}")
+    if not MIGRATION_CONFIG_FILE.is_file():
+        parser.error(f"Private migration config not found: {MIGRATION_CONFIG_FILE}")
     if not arguments.package.is_file():
         parser.error("The encrypted backup package does not exist.")
 
-    configuration = dotenv_values(CONFIG_FILE)
+    configuration = dotenv_values(MIGRATION_CONFIG_FILE)
     try:
         connection = verify_local_target(configuration)
         encryption_key = getpass.getpass("Backup encryption key: ")
@@ -210,18 +272,10 @@ def main():
                     check=True,
                     stdin=subprocess.DEVNULL,
                 )
-                migration_environment = os.environ.copy()
-                migration_environment["DJANGO_ENV_FILE"] = str(CONFIG_FILE)
-                migration_environment["DJANGO_SETTINGS_MODULE"] = "config.settings"
+                grant_runtime_privileges(target)
                 subprocess.run(
-                    [
-                        str(REPOSITORY_ROOT / ".venv/bin/python"),
-                        str(REPOSITORY_ROOT / "manage.py"),
-                        "migrate",
-                        "--noinput",
-                    ],
+                    migration_command(),
                     cwd=REPOSITORY_ROOT,
-                    env=migration_environment,
                     check=True,
                     stdin=subprocess.DEVNULL,
                 )

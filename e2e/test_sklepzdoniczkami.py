@@ -102,6 +102,7 @@ def test_storefront_pages_fit_mobile_tablet_and_desktop(
 
     page_urls = (
         reverse("sklepzdoniczkami:home"),
+        reverse("sklepzdoniczkami:products"),
         reverse("sklepzdoniczkami:login"),
         product.get_absolute_url(),
         reverse("sklepzdoniczkami:cart"),

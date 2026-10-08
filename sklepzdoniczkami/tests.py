@@ -20,7 +20,11 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
-from config.settings import resolve_app_env, validate_stripe_configuration
+from config.settings import (
+    resolve_app_env,
+    resolve_secure_ssl_redirect,
+    validate_stripe_configuration,
+)
 from .management.commands.bootstrap_first_admin import Command as BootstrapFirstAdminCommand
 from .management.commands.reset_production_admin_password import (
     Command as ResetProductionAdminPasswordCommand,
@@ -236,12 +240,56 @@ class ProductionPreviewCatalogCommandTests(TestCase):
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
             "USER": "sklepzdoniczkami_prod_web_limited",
-            "HOST": "db.example",
+            "HOST": "127.0.0.1",
             "PORT": "5432",
             "OPTIONS": options or {},
         }
         database.cursor.return_value.__enter__.return_value = cursor
         return database, cursor
+
+    def test_database_validation_accepts_restricted_runtime_user(self):
+        database, cursor = self.production_database_connection()
+        cursor.fetchone.side_effect = [
+            (
+                "sklepzdoniczkami_prod",
+                "sklepzdoniczkami_prod_web_limited",
+                "public",
+            ),
+            (False, False, False, False, False, False, False, False),
+        ]
+        with patch(
+            "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+            {"default": database},
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    def test_database_validation_rejects_runtime_user_with_elevated_privileges(self):
+        privileged_results = (
+            (True, False, False, False, False, False, False, False),
+            (False, True, False, False, False, False, False, False),
+            (False, False, False, False, False, False, False, True),
+        )
+        for privileges in privileged_results:
+            with self.subTest(privileges=privileges):
+                database, cursor = self.production_database_connection()
+                cursor.fetchone.side_effect = [
+                    (
+                        "sklepzdoniczkami_prod",
+                        "sklepzdoniczkami_prod_web_limited",
+                        "public",
+                    ),
+                    privileges,
+                ]
+                with (
+                    patch(
+                        "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                        {"default": database},
+                    ),
+                    self.assertRaisesMessage(
+                        CommandError, "excessive database privileges"
+                    ),
+                ):
+                    SeedProductionPreviewCatalogCommand.validate_production_database()
 
     def test_database_validation_rejects_connection_routing_override(self):
         database, _ = self.production_database_connection(
@@ -252,42 +300,33 @@ class ProductionPreviewCatalogCommandTests(TestCase):
                 "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
                 {"default": database},
             ),
-            patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "db.example"}),
             self.assertRaisesMessage(CommandError, "pinned production database"),
         ):
             SeedProductionPreviewCatalogCommand.validate_production_database()
 
         database.cursor.assert_not_called()
 
-    def test_database_validation_rejects_elevated_runtime_role(self):
+    def test_database_validation_rejects_nonlocal_database(self):
         database, cursor = self.production_database_connection()
-        cursor.fetchone.side_effect = [
-            ("sklepzdoniczkami_prod", "sklepzdoniczkami_prod_web_limited", "public"),
-            (False, False, False, False, True, False, False, False),
-        ]
+        database.settings_dict["HOST"] = "db.example"
         with (
             patch(
                 "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
                 {"default": database},
             ),
-            patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "db.example"}),
-            self.assertRaisesMessage(CommandError, "excessive database privileges"),
+            self.assertRaisesMessage(CommandError, "pinned production database"),
         ):
             SeedProductionPreviewCatalogCommand.validate_production_database()
 
-    def test_database_validation_rejects_schema_create_privilege(self):
+    def test_database_validation_rejects_database_owner_user(self):
         database, cursor = self.production_database_connection()
-        cursor.fetchone.side_effect = [
-            ("sklepzdoniczkami_prod", "sklepzdoniczkami_prod_web_limited", "public"),
-            (True, False, False, False, False, False, False, False),
-        ]
+        database.settings_dict["USER"] = "sklepzdoniczkami_prod"
         with (
             patch(
                 "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
                 {"default": database},
             ),
-            patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "db.example"}),
-            self.assertRaisesMessage(CommandError, "excessive database privileges"),
+            self.assertRaisesMessage(CommandError, "pinned production database"),
         ):
             SeedProductionPreviewCatalogCommand.validate_production_database()
 
@@ -671,7 +710,6 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "os.environ",
             {
                 "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
-                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
             },
         ):
             with self.assertRaisesMessage(
@@ -692,7 +730,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
             "USER": "sklepzdoniczkami_prod_web_limited",
-            "HOST": "expected.neon.tech",
+            "HOST": "127.0.0.1",
             "PASSWORD": "not-a-real-secret",
             "PORT": "5432",
             "OPTIONS": {"hostaddr": "203.0.113.7"},
@@ -701,7 +739,6 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "os.environ",
             {
                 "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
-                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
             },
         ), override_settings(DATABASES={"default": production_database}):
             with self.assertRaisesMessage(
@@ -722,7 +759,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
             "USER": "sklepzdoniczkami_prod_web_limited",
-            "HOST": "expected.neon.tech",
+            "HOST": "127.0.0.1",
             "PASSWORD": "not-a-real-secret",
             "PORT": "5432",
             "OPTIONS": {"options": "-c search_path=other_schema"},
@@ -731,7 +768,6 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "os.environ",
             {
                 "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
-                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
             },
         ), override_settings(DATABASES={"default": production_database}):
             with self.assertRaisesMessage(
@@ -752,7 +788,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
             "USER": "sklepzdoniczkami_prod_web_limited",
-            "HOST": "expected.neon.tech",
+            "HOST": "127.0.0.1",
             "PASSWORD": "not-a-real-secret",
             "PORT": "6543",
             "OPTIONS": {},
@@ -761,7 +797,6 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "os.environ",
             {
                 "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
-                "PRODUCTION_DATABASE_HOST": "expected.neon.tech",
             },
         ), override_settings(DATABASES={"default": production_database}):
             with self.assertRaisesMessage(
@@ -783,7 +818,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
             "USER": "sklepzdoniczkami_prod_web_limited",
-            "HOST": "expected.neon.tech",
+            "HOST": "127.0.0.1",
             "OPTIONS": {},
         }
         cursor = database.cursor.return_value.__enter__.return_value
@@ -793,86 +828,134 @@ class FirstAdminBootstrapCommandTests(TestCase):
             "unexpected_schema",
         )
 
-        with patch.dict("os.environ", {"PRODUCTION_DATABASE_HOST": "expected.neon.tech"}):
-            with patch(
-                "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
-            ) as connection_handler:
-                connection_handler.__getitem__.return_value = database
-                with self.assertRaisesMessage(
-                    CommandError, "does not match the production target"
-                ):
-                    BootstrapFirstAdminCommand().validate_production_database()
+        with patch(
+            "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+        ) as connection_handler:
+            connection_handler.__getitem__.return_value = database
+            with self.assertRaisesMessage(
+                CommandError, "does not match the production target"
+            ):
+                BootstrapFirstAdminCommand().validate_production_database()
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_accepts_restricted_runtime_user(self):
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PORT": "5432",
+            "OPTIONS": {},
+        }
+        cursor = database.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
+            "public",
+        )
+
+        with patch(
+            "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+        ) as connection_handler:
+            connection_handler.__getitem__.return_value = database
+            BootstrapFirstAdminCommand().validate_production_database()
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_database_owner_connection(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod",
+            "HOST": "127.0.0.1",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {},
+        }
+        with override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                BootstrapFirstAdminCommand().validate_production_database()
 
 
 class SampleProductCommandTests(TestCase):
     def test_sample_products_are_idempotent_and_development_only(self):
-        with TemporaryDirectory() as media_root:
-            with override_settings(
-                APP_ENV="development",
-                MEDIA_ROOT=media_root,
-                MEDIA_URL="/media/",
-            ):
-                call_command("load_sample_products", verbosity=0)
-                call_command("load_sample_products", verbosity=0)
+        with override_settings(APP_ENV="development"):
+            call_command("load_sample_products", verbosity=0)
+            call_command("load_sample_products", verbosity=0)
 
-            products = Product.objects.filter(is_active=True)
-            self.assertEqual(products.count(), 5)
-            self.assertTrue(
-                all(product.image.startswith("/media/products/") for product in products)
+        products = Product.objects.filter(is_active=True)
+        self.assertEqual(products.count(), 8)
+        self.assertTrue(
+            all(
+                product.image.startswith(
+                    "/static/sklepzdoniczkami/img/products/"
+                )
+                and product.image.endswith(".svg")
+                for product in products
             )
-            self.assertEqual(
-                {
-                    category.slug: category.products.filter(is_active=True).count()
-                    for category in Category.objects.filter(
-                        slug__in=("ceramiczne", "plastikowe", "cementowe")
-                    )
-                },
-                {"ceramiczne": 2, "plastikowe": 2, "cementowe": 1},
-            )
+        )
+        self.assertEqual(
+            {
+                category.slug: category.products.filter(is_active=True).count()
+                for category in Category.objects.filter(
+                    slug__in=("betonowe", "drewniane", "plastikowe")
+                )
+            },
+            {"betonowe": 2, "drewniane": 2, "plastikowe": 4},
+        )
+        self.assertEqual(
+            Product.objects.get(slug="doniczka-betonowa-kamien").stock,
+            8,
+        )
+        self.assertEqual(
+            Product.objects.get(slug="doniczka-plastikowa-balkonowa").stock,
+            15,
+        )
 
-            response = self.client.get(reverse("sklepzdoniczkami:products"))
-            self.assertContains(response, "Wszystkie produkty")
-            self.assertContains(response, "Ceramiczne")
-            self.assertContains(response, "Plastikowe")
-            self.assertContains(response, "Cementowe")
-            self.assertContains(response, "2 produkty")
+        response = self.client.get(reverse("sklepzdoniczkami:products"))
+        self.assertContains(response, "Wszystkie produkty")
+        self.assertContains(response, "Betonowe")
+        self.assertContains(response, "Drewniane")
+        self.assertContains(response, "Plastikowe")
+        self.assertContains(response, "/static/sklepzdoniczkami/img/categories/betonowe.svg")
+        self.assertNotContains(response, "Ceramiczne")
+        self.assertNotContains(response, "Cementowe")
 
-            plastic_category = Category.objects.get(slug="plastikowe")
-            filtered_response = self.client.get(plastic_category.get_absolute_url())
-            self.assertContains(filtered_response, "Kolorowy zestaw doniczek plastikowych")
-            self.assertContains(filtered_response, "Duża doniczka plastikowa ogrodowa")
-            self.assertNotContains(filtered_response, "Doniczka cementowa klasyczna")
+        plastic_category = Category.objects.get(slug="plastikowe")
+        filtered_response = self.client.get(plastic_category.get_absolute_url())
+        self.assertContains(filtered_response, "Kolorowy zestaw doniczek plastikowych")
+        self.assertContains(filtered_response, "Duża doniczka plastikowa ogrodowa")
+        self.assertContains(filtered_response, "Doniczka plastikowa balkonowa")
+        self.assertNotContains(filtered_response, "Doniczka cementowa klasyczna")
 
     def test_sample_command_preserves_legacy_product_when_canonical_slug_exists(self):
         category = Category.objects.create(name="Stara kategoria", slug="stara-kategoria")
         legacy_product = Product.objects.create(
             category=category,
-            name="Starszy produkt",
-            slug="doniczka-terakotowa-na-podstawce",
+            name="Starszy zestaw",
+            slug="zestaw-doniczek-z-terakoty",
             price="10.00",
             stock=1,
         )
         Product.objects.create(
             category=category,
-            name="Istniejący produkt",
-            slug="doniczka-ceramiczna-na-podstawce",
+            name="Istniejący zestaw",
+            slug="zestaw-doniczek-plastikowych",
             price="20.00",
             stock=1,
         )
 
-        with TemporaryDirectory() as media_root:
-            with override_settings(
-                APP_ENV="development",
-                MEDIA_ROOT=media_root,
-                MEDIA_URL="/media/",
-            ):
-                call_command("load_sample_products", verbosity=0)
+        with override_settings(APP_ENV="development"):
+            call_command("load_sample_products", verbosity=0)
 
         legacy_product.refresh_from_db()
-        canonical_product = Product.objects.get(slug="doniczka-ceramiczna-na-podstawce")
+        canonical_product = Product.objects.get(slug="zestaw-doniczek-plastikowych")
         self.assertFalse(legacy_product.is_active)
+        self.assertEqual(legacy_product.stock, 0)
         self.assertTrue(canonical_product.is_active)
-        self.assertEqual(canonical_product.name, "Doniczka ceramiczna na podstawce")
+        self.assertEqual(canonical_product.name, "Kolorowy zestaw doniczek plastikowych")
 
     @override_settings(APP_ENV="preprod")
     def test_sample_products_command_refuses_to_run_outside_development(self):
@@ -880,6 +963,16 @@ class SampleProductCommandTests(TestCase):
             call_command("load_sample_products")
 
         self.assertFalse(Product.objects.filter(is_active=True).exists())
+
+
+class SecureRedirectConfigurationTests(SimpleTestCase):
+    def test_direct_tls_environments_do_not_redirect(self):
+        self.assertFalse(resolve_secure_ssl_redirect("development", "True"))
+        self.assertFalse(resolve_secure_ssl_redirect("preprod", "True"))
+
+    def test_production_redirect_can_be_disabled_explicitly(self):
+        self.assertTrue(resolve_secure_ssl_redirect("production", "True"))
+        self.assertFalse(resolve_secure_ssl_redirect("production", "False"))
 
 
 class StripeConfigurationTests(TestCase):
