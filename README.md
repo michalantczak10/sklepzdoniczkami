@@ -67,30 +67,37 @@ rejestrowanymi ani egzekwowanymi przez GitHub.
    check, testy Django i testy E2E) scalaj przez squash merge. CI uruchamia się na
    GitHub-hosted runners, używa SQLite i nie wdraża aplikacji ani nie łączy się
    z bazami OVH.
-2. Wdrażaj `dev` wyłącznie do usługi development i bazy
-   `sklepzdoniczkami_dev`. Testuj tam funkcjonalność oraz przykładowe dane.
-3. Po akceptacji otwieraj PR `dev` -> `main`. Po dwóch niezależnych review AI
-   i przejściu wymaganych kontroli scalaj PR. Po scaleniu wybierz konkretny
-   commit `main`, wdrażaj go najpierw do preprod z bazą
-   `sklepzdoniczkami_preprod` i wykonaj testy akceptacyjne.
-4. Po akceptacji preprod wdrażaj **ten sam commit** na produkcję. Nie wdrażaj
-   produkcji bez sprawdzenia migracji i aktualnej, przetestowanej kopii bazy.
-   Wdrożenia są ręczne; GitHub Actions nie ma sekretów SSH i nie uruchamia
-   deploymentu.
+2. Po scaleniu PR pobierz aktualny `dev` i wdrażaj jego pełny SHA wyłącznie do
+   developmentu. Z katalogu repozytorium uruchom:
+   ```powershell
+   git fetch origin
+   $sha = (git rev-parse origin/dev).Trim()
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
+   ```
+   Skrypt przed połączeniem sprawdza, że commit należy do właściwej gałęzi i że
+   wymagane checki Django oraz Playwright zakończyły się sukcesem.
+3. Po testach akceptacyjnych otwieraj PR `dev` -> `main`. Po scaleniu wybierz
+   pełny SHA z `main` i wdrażaj go najpierw na preprod:
+   ```powershell
+   git fetch origin
+   $sha = (git rev-parse origin/main).Trim()
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment preprod -Commit $sha
+   ```
+4. Po akceptacji preprod wdrażaj **ten sam SHA** na produkcję:
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $sha
+   ```
+   Skrypt blokuje produkcję, jeśli ten sam SHA nie przeszedł wcześniej
+   wdrożenia i testów health-check na preprod albo nie ma root-owned znacznika
+   potwierdzającego zweryfikowaną kopię bazy i mediów poza VPS. `Bypass`
+   dotyczy wyłącznie uruchomionego procesu PowerShell i nie zmienia trwałej
+   polityki komputera ani użytkownika.
 
-**Blokada przed następnym wdrożeniem:** zdalny branch `dev` jest stary i
-rozjechał się z `main`. Ostatni `dev` (`65522f2`) nadal zawiera konfigurację
-Render/Neon, a `main` (`da455da`) ma względem niego 54 commity do przodu i 21
-commitów, których nie ma w `main`. Nie wdrażaj obecnego `dev` na OVH. Najpierw
-przygotuj PR synchronizujący `main` do `dev`, usuń z niego pozostałą starą
-konfigurację i sprawdź całą historię/konflikty; dopiero potem wróć do opisanej
-promocji branchy. Nie rozwiązuj tego przez force-push ani reset `dev`.
-
-Do czasu tej synchronizacji niezależne checkouts development i preprod na VPS
-są przypięte do bezpiecznego commitu `main` `da455da`; produkcja działa na
-`adc66a9`. Usługi są od siebie odizolowane, ale `dev` nie jest jeszcze
-wdrażany z gałęzi o tej samej nazwie. Nie traktuj tego stanu jako ukończonego
-przepływu promocji.
+Jeśli `dev` i `main` się rozjadą, najpierw otwórz PR synchronizujący `main` do
+`dev`, rozwiąż konflikty i poczekaj na wymagane CI. Do czasu jego scalenia nie
+wdrażaj `dev`. Nie używaj force-push ani resetu branchy. Skrypt wdrożeniowy
+korzysta z lokalnego SSH i GitHub CLI; klucz SSH nie jest przekazywany do
+GitHub Actions.
 
 Zmiany schematu dodawaj jako migracje Django w tym samym PR co kod. Uruchamiaj
 migracje osobno i wyłącznie dla docelowego środowiska. Dane developerskie,
@@ -147,3 +154,10 @@ Runbook VPS, usług, wdrożeń i obecnych ograniczeń odzyskiwania:
 **Pozostałe ryzyko:** na VPS nie ma skonfigurowanej ani przetestowanej kopii
 zapasowej poza serwerem. Nie przechowuj tam jedynej kopii zamówień ani danych
 klientów; przed sprzedażą skonfiguruj niezależną kopię i przetestuj odtworzenie.
+
+**Gotowość sprzedażowa:** ostatni odczyt produkcji wykazał wyłączony Stripe,
+nie skonfigurowany SMTP, zero aktywnych produktów i zero produktów ze stanem
+większym od zera. Odpowiedź strony HTTP 200 potwierdza tylko dostępność
+aplikacji. Nie przyjmuj zamówień, dopóki nie skonfigurujesz płatności live i
+webhooka Stripe, poczty transakcyjnej, rzeczywistego katalogu ze stanami oraz
+zaszyfrowanych kopii bazy i mediów z przetestowanym odtworzeniem.

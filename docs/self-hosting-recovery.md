@@ -78,12 +78,12 @@ Certyfikaty wygasają po roku; przed wygaśnięciem wygeneruj nową parę dla
 odpowiedniego środowiska i zrestartuj tylko jego usługę. Ostrzeżenie przeglądarki
 jest oczekiwane dla self-signed `localhost`; używaj tunelu SSH i kont testowych.
 
-**Stan branchy wymaga naprawy przed kolejnym wdrożeniem:** `dev` (`65522f2`)
-zawiera jeszcze ustawienia Render/Neon i jest rozbieżny z `main` (`da455da`).
-Nie wdrażaj go. Zsynchronizuj `main` do `dev` przez PR, rozwiąż konflikty,
-usuń konfigurację starego hostingu i przepuść CI. Development i preprod
-działają obecnie na bezpiecznym checkout `main` `da455da`; produkcja nadal
-działa na `adc66a9`. Nie wykonuj force-push/resetu `dev`.
+Przed wdrożeniem development sprawdź, czy branch `dev` jest zsynchronizowany z
+aktualną architekturą z `main`. Jeśli branch był długo nieaktualizowany, otwórz
+PR `main` -> `dev`, usuń starą konfigurację w ramach przeglądanego diffu i
+scal dopiero po wymaganym CI. Nie wdrażaj starego `dev` ani nie używaj
+force-push/resetu. Bieżący commit na każdym środowisku sprawdzisz poleceniem
+`git -C <ścieżka-checkoutu> rev-parse HEAD`.
 
 ## Dostęp do dev i preprod
 
@@ -136,32 +136,47 @@ sudo systemctl reload caddy
 
 ## Bezpieczne wdrażanie
 
-Nie wykonuj `git pull` w katalogu produkcyjnym bezpośrednio z `main`. Wybierz
-konkretny commit i zachowaj go w historii wdrożenia. Deployment jest ręczny;
-GitHub Actions uruchamia testy, ale nie ma dostępu SSH do VPS.
+Uruchamiaj wdrożenia z Windows w katalogu repozytorium przez
+`scripts/deploy_ovh.ps1`. Skrypt weryfikuje lokalnie, że commit należy do
+oczekiwanej gałęzi i oba wymagane checki GitHub Actions zakończyły się
+sukcesem. Łączy się do VPS przy użyciu lokalnego klucza SSH; nie dodawaj tego
+klucza do GitHub ani do CI.
 
-1. Upewnij się, że commit jest osiągalny z właściwego brancha: `dev` dla
-   developmentu, `main` dla preprod i produkcji. Nie używaj obecnego `dev`,
-   dopóki branch nie zostanie zsynchronizowany z `main`.
-2. Sprawdź czystość właściwego checkoutu i pobierz kod jako administrator
-   serwera. Osobne ścieżki checkoutów są wymienione wyżej. Używaj tylko
-   zatwierdzonego SHA; nie kopiuj `.env`, lokalnej bazy ani katalogu `media`.
-3. Przed migracją sprawdź konfigurację Django, nazwę bazy i migracje na
-   docelowej usłudze. Wdrożenie kodu nie może zmieniać URL/roli innego
-   środowiska. Nie uruchamiaj migracji jako użytkownik Gunicorna ani jako root
-   z `app.env`; użyj osobnego konta i prywatnego pliku:
-   ```bash
-   sudo runuser -u sklepzdoniczkami-migrator -- env \
-     DJANGO_ENV_FILE=/etc/sklepzdoniczkami/migration.env \
-     /opt/sklepzdoniczkami/.venv/bin/python \
-     /opt/sklepzdoniczkami/manage.py migrate --noinput
-   ```
-4. Zbierz `staticfiles` i zrestartuj wyłącznie odpowiadającą jej usługę.
-   Sprawdź `/admin/login/`, logi i publiczną stronę po wdrożeniu produkcji.
-   Dla produkcji testuj dokładnie ten sam SHA wcześniej na preprod.
-5. Migracje muszą być zgodne wstecznie podczas wdrożenia; wycofanie kodu nie
-   cofa zmian schematu ani danych. Przy błędzie zatrzymaj promocję i oceń
-   odtworzenie lub osobną migrację naprawczą.
+```powershell
+git fetch origin
+$developmentSha = (git rev-parse origin/dev).Trim()
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment development -Commit $developmentSha
+```
+
+Po PR `dev` -> `main` i testach na development wybierz commit z `main`,
+wdrażaj go na preprod, a po akceptacji podaj **ten sam SHA** dla produkcji:
+
+```powershell
+git fetch origin
+$releaseSha = (git rev-parse origin/main).Trim()
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment preprod -Commit $releaseSha
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_ovh.ps1 -Environment production -Commit $releaseSha
+```
+
+The execution-policy bypass applies only to those PowerShell processes; it does
+not change the machine or user policy.
+
+Skrypt na VPS sprawdza czystość checkoutu, pochodzenie commitu, migracje,
+collectstatic i health-check odpowiedniej usługi. Produkcja dodatkowo wymaga
+tego samego SHA w preprod oraz root-owned pliku
+`/etc/sklepzdoniczkami/production-backup-verified`. Utwórz ten znacznik dopiero
+po skonfigurowaniu zaszyfrowanej kopii PostgreSQL i `media/` poza VPS oraz
+udanym teście odtworzenia:
+
+```bash
+sudo install -o root -g root -m 0600 /dev/null \
+  /etc/sklepzdoniczkami/production-backup-verified
+```
+
+Po błędzie wdrożenie przywraca poprzedni kod i uruchamia usługę; **migracje bazy
+nie są automatycznie cofane**. Projektuj migracje kompatybilnie wstecz i przed
+wdrożeniem produkcyjnym miej aktualną, przetestowaną kopię. Nie kopiuj `.env`,
+lokalnej bazy ani katalogu `media` między środowiskami.
 
 Nie uruchamiaj `load_sample_products` poza developmentem. Nie synchronizuj
 danych development -> preprod/produkcja. Nie używaj w produkcji komend
@@ -211,3 +226,10 @@ Stripe i SMTP nie są skonfigurowane. Nie przyjmuj płatności ani nie zakładaj
 że reset hasła wysyła wiadomość, dopóki integracje nie zostaną skonfigurowane
 i przetestowane. Nie umieszczaj haseł administratora, kluczy SSH ani wartości
 plików środowiskowych w Git, logach lub rozmowie.
+
+Ostatni bezpieczny odczyt konfiguracji produkcji wykazał `STRIPE_ENABLED=False`,
+brak skonfigurowanych parametrów SMTP, zero aktywnych produktów i zero
+produktów ze stanem magazynowym większym od zera. HTTP 200 nie oznacza gotowości
+do sprzedaży. Przed otwarciem sklepu skonfiguruj klucze live i webhook Stripe,
+SMTP, prawdziwe produkty/ceny/stany oraz niezależne kopie bazy i mediów z
+udanym testem odtworzenia.
