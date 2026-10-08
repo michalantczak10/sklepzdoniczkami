@@ -1,79 +1,83 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}Zamówienie{% endblock %}
+{% block robots_meta %}<meta name="robots" content="noindex,nofollow">{% endblock %}
 
 {% block content %}
-    <h1>Zamówienie</h1>
+    <div class="container content-page">
+        <h1>Zamówienie</h1>
 
-    <div class="product-detail">
-        <div class="card">
-            <form method="post">
-                {% csrf_token %}
-                <div class="grid">
-                    <div>
-                        <label>Imię</label><br>
-                        <input type="text" name="first_name" required>
+        <div class="checkout-layout">
+            <div class="card checkout-form-card">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="grid">
+                        <div class="form-field">
+                            <label for="checkout-first-name">Imię</label>
+                            <input id="checkout-first-name" type="text" name="first_name" autocomplete="given-name" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="checkout-last-name">Nazwisko</label>
+                            <input id="checkout-last-name" type="text" name="last_name" autocomplete="family-name" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="checkout-email">Email</label>
+                            <input id="checkout-email" type="email" name="email" autocomplete="email" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="checkout-phone">Telefon</label>
+                            <input id="checkout-phone" type="tel" name="phone" autocomplete="tel">
+                        </div>
+                        <div class="form-field form-field-wide">
+                            <label for="checkout-address">Adres</label>
+                            <input id="checkout-address" type="text" name="address" autocomplete="street-address" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="checkout-city">Miasto</label>
+                            <input id="checkout-city" type="text" name="city" autocomplete="address-level2" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="checkout-postal-code">Kod pocztowy</label>
+                            <input id="checkout-postal-code" type="text" name="postal_code" autocomplete="postal-code" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="shipping-method">Metoda dostawy</label>
+                            <select id="shipping-method" name="shipping_method">
+                                <option value="courier">Kurier (19.99 zł)</option>
+                                <option value="parcel">Paczkomat (14.99 zł)</option>
+                                <option value="pickup">Odbiór osobisty (0 zł)</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="payment-method">Metoda płatności</label>
+                            <select id="payment-method" name="payment_method">
+                                <option value="transfer">Przelew bankowy</option>
+                                {% if stripe_enabled %}
+                                    <option value="card">Karta płatnicza</option>
+                                {% endif %}
+                                <option value="cash_on_delivery">Pobranie</option>
+                            </select>
+                        </div>
+                        <div class="form-field form-field-wide">
+                            <label for="checkout-comments">Komentarz</label>
+                            <textarea id="checkout-comments" name="comments" rows="4"></textarea>
+                        </div>
                     </div>
-                    <div>
-                        <label>Nazwisko</label><br>
-                        <input type="text" name="last_name" required>
+                    <div class="actions">
+                        <button class="btn" type="submit">Złóż zamówienie</button>
                     </div>
-                    <div>
-                        <label>Email</label><br>
-                        <input type="email" name="email" required>
-                    </div>
-                    <div>
-                        <label>Telefon</label><br>
-                        <input type="text" name="phone">
-                    </div>
-                    <div style="grid-column: 1 / -1;">
-                        <label>Adres</label><br>
-                        <input type="text" name="address" required style="width: 100%;">
-                    </div>
-                    <div>
-                        <label>Miasto</label><br>
-                        <input type="text" name="city" required>
-                    </div>
-                    <div>
-                        <label>Kod pocztowy</label><br>
-                        <input type="text" name="postal_code" required>
-                    </div>
-                    <div>
-                        <label>Metoda dostawy</label><br>
-                        <select name="shipping_method">
-                            <option value="courier">Kurier (19.99 zł)</option>
-                            <option value="parcel">Paczkomat (14.99 zł)</option>
-                            <option value="pickup">Odbiór osobisty (0 zł)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>Metoda płatności</label><br>
-                        <select name="payment_method">
-                            <option value="transfer">Przelew bankowy</option>
-                            {% if stripe_enabled %}
-                                <option value="card">Karta płatnicza</option>
-                            {% endif %}
-                            <option value="cash_on_delivery">Pobranie</option>
-                        </select>
-                    </div>
-                    <div style="grid-column: 1 / -1;">
-                        <label>Komentarz</label><br>
-                        <textarea name="comments" rows="4" style="width: 100%;"></textarea>
-                    </div>
-                </div>
-                <div class="actions">
-                    <button class="btn" type="submit">Złóż zamówienie</button>
-                </div>
-            </form>
+                </form>
+            </div>
+
+            <aside class="card checkout-summary">
+                <span class="eyebrow">Twoje zakupy</span>
+                <h2>Podsumowanie</h2>
+                {% for item in items %}
+                    <p>{{ item.product.name }} <span>x {{ item.quantity }}</span><strong>{{ item.line_total }} zł</strong></p>
+                {% endfor %}
+                <p>Dostawa <strong>{{ shipping_costs.courier }} zł</strong></p>
+                <div class="price">Łącznie: {{ total }} zł</div>
+            </aside>
         </div>
-
-        <aside class="card">
-            <h3>Podsumowanie</h3>
-            {% for item in items %}
-                <p>{{ item.product.name }} x {{ item.quantity }} — {{ item.line_total }} zł</p>
-            {% endfor %}
-            <p>Dostawa: {{ shipping_costs.courier }} zł</p>
-            <div class="price">Łącznie: {{ total }} zł</div>
-        </aside>
     </div>
 {% endblock %}

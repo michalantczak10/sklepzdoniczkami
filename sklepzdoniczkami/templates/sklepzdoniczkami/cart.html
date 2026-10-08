@@ -1,23 +1,26 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}Koszyk{% endblock %}
+{% block robots_meta %}<meta name="robots" content="noindex,nofollow">{% endblock %}
 
 {% block content %}
-    <h1>Koszyk</h1>
+    <div class="container content-page">
+        <h1>Koszyk</h1>
 
-    {% if items %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Produkt</th>
-                    <th>Ilość</th>
-                    <th>Cena</th>
-                    <th>Razem</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
+        {% if items %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Produkt</th>
+                            <th>Ilość</th>
+                            <th>Cena</th>
+                            <th>Razem</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
                     <tr>
                         <td><a href="{{ item.product.get_absolute_url }}">{{ item.product.name }}</a></td>
                         <td>{{ item.quantity }}</td>
@@ -26,15 +29,21 @@
                         <td><a href="{% url 'sklepzdoniczkami:remove_from_cart' item.product.id %}">Usuń</a></td>
                     </tr>
                 {% endfor %}
-            </tbody>
-        </table>
+                    </tbody>
+                </table>
+            </div>
 
-        <div class="actions">
-            <div class="price">Suma: {{ total }} zł</div>
-            <a class="btn" href="{% url 'sklepzdoniczkami:checkout' %}">Przejdź do zamówienia</a>
-        </div>
-    {% else %}
-        <p>Twój koszyk jest pusty.</p>
-        <a class="btn" href="{% url 'sklepzdoniczkami:home' %}">Wróć do sklepu</a>
-    {% endif %}
+            <div class="actions cart-actions">
+                <div class="price">Suma: {{ total }} zł</div>
+                <a class="btn" href="{% url 'sklepzdoniczkami:checkout' %}">Przejdź do zamówienia</a>
+            </div>
+        {% else %}
+            <div class="card empty-cart">
+                <span class="benefit-icon" aria-hidden="true">♧</span>
+                <h2>Twój koszyk jest pusty</h2>
+                <p>Wybierz doniczkę do domu, na balkon lub taras.</p>
+                <a class="btn" href="{% url 'sklepzdoniczkami:home' %}">Przejdź do sklepu <span aria-hidden="true">→</span></a>
+            </div>
+        {% endif %}
+    </div>
 {% endblock %}

@@ -1,22 +1,37 @@
+from decimal import Decimal
+from io import StringIO
 from importlib import import_module
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import stripe
 from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command, CommandError
+from django.core import mail
 from django.db import connection
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from .admin import OrderAdmin, OrderAdminForm, OrderItemInline
-from config.settings import resolve_app_env, validate_stripe_configuration
+from config.settings import (
+    resolve_app_env,
+    resolve_secure_ssl_redirect,
+    validate_stripe_configuration,
+)
+from .management.commands.bootstrap_first_admin import Command as BootstrapFirstAdminCommand
+from .management.commands.reset_production_admin_password import (
+    Command as ResetProductionAdminPasswordCommand,
+)
+from .management.commands.seed_production_preview_catalog import (
+    Command as SeedProductionPreviewCatalogCommand,
+)
 from .models import Category, Order, OrderItem, Product
 from .services import release_order_inventory
 from .views import (
@@ -29,18 +44,130 @@ from .views import (
 inventory_migration = import_module(
     "sklepzdoniczkami.migrations.0006_order_inventory_deducted"
 )
+catalog_visibility_migration = import_module(
+    "sklepzdoniczkami.migrations.0011_hide_non_pot_products"
+)
 
 
 class AppEnvironmentTests(SimpleTestCase):
-    def test_render_requires_explicit_environment(self):
-        with self.assertRaisesMessage(ImproperlyConfigured, "explicitly configured on Render"):
-            resolve_app_env(None, is_render=True)
-
     def test_local_environment_defaults_to_development(self):
-        self.assertEqual(resolve_app_env(None, is_render=False), "development")
+        self.assertEqual(resolve_app_env(None), "development")
 
     def test_environment_is_normalized(self):
-        self.assertEqual(resolve_app_env(" PREPROD ", is_render=True), "preprod")
+        self.assertEqual(resolve_app_env(" PREPROD "), "preprod")
+
+
+class SearchEngineOptimizationTests(TestCase):
+    @override_settings(SEO_INDEXING_ENABLED=True, SITE_URL="https://sklepzdoniczkami.pl")
+    def test_robots_allows_public_pages_and_advertises_sitemap(self):
+        response = self.client.get(reverse("robots_txt"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "User-agent: *")
+        self.assertContains(response, "Disallow: /checkout/")
+        self.assertContains(
+            response,
+            "Sitemap: https://sklepzdoniczkami.pl/sitemap.xml",
+        )
+        self.assertNotIn("Disallow: /\n", response.content.decode())
+
+    @override_settings(SEO_INDEXING_ENABLED=False)
+    def test_robots_blocks_nonproduction_environments(self):
+        response = self.client.get(reverse("robots_txt"))
+
+        self.assertEqual(response.content.decode(), "User-agent: *\nDisallow: /\n")
+
+    @override_settings(SEO_INDEXING_ENABLED=True, SITE_URL="https://sklepzdoniczkami.pl")
+    def test_sitemap_contains_canonical_public_catalog_urls(self):
+        plant_category = Category.objects.create(
+            name="Rośliny zielone",
+            slug="rosliny-zielone",
+        )
+        Product.objects.create(
+            category=plant_category,
+            name="Monstera",
+            slug="monstera-deliciosa",
+            description="Roślina doniczkowa do domu.",
+            price=Decimal("49.90"),
+            stock=0,
+            is_active=True,
+        )
+        pot_category, _ = Category.objects.get_or_create(
+            slug="doniczki",
+            defaults={"name": "Doniczki"},
+        )
+        Product.objects.create(
+            category=pot_category,
+            name="Doniczka ceramiczna",
+            slug="doniczka-ceramiczna",
+            description="Ceramiczna doniczka do domu.",
+            price=Decimal("49.90"),
+            stock=0,
+            is_active=True,
+        )
+        Product.objects.create(
+            category=pot_category,
+            name="Ukryty produkt",
+            slug="ukryty-produkt",
+            price=Decimal("20.00"),
+            stock=0,
+            is_active=False,
+        )
+
+        response = self.client.get(reverse("sitemap_xml"))
+        xml = response.content.decode()
+
+        self.assertEqual(response["Content-Type"], "application/xml; charset=utf-8")
+        self.assertIn("https://sklepzdoniczkami.pl/", xml)
+        self.assertIn("https://sklepzdoniczkami.pl/category/doniczki/", xml)
+        self.assertIn("https://sklepzdoniczkami.pl/product/doniczka-ceramiczna/", xml)
+        self.assertNotIn("monstera-deliciosa", xml)
+        self.assertNotIn("rosliny-zielone", xml)
+        self.assertNotIn("ukryty-produkt", xml)
+        self.assertNotIn("checkout", xml)
+
+    @override_settings(SEO_INDEXING_ENABLED=False)
+    def test_nonproduction_sitemap_is_empty(self):
+        response = self.client.get(reverse("sitemap_xml"))
+        self.assertNotIn("sklepzdoniczkami.pl", response.content.decode())
+        self.assertNotIn("<loc>", response.content.decode())
+
+    @override_settings(SEO_INDEXING_ENABLED=True, SITE_URL="https://sklepzdoniczkami.pl")
+    def test_homepage_has_canonical_social_and_search_metadata(self):
+        response = self.client.get(reverse("sklepzdoniczkami:home"))
+
+        self.assertContains(
+            response,
+            '<link rel="canonical" href="https://sklepzdoniczkami.pl/">',
+            html=True,
+        )
+        self.assertContains(response, 'name="robots" content="index,follow"')
+        self.assertContains(response, 'property="og:title"')
+        self.assertContains(response, 'type="application/ld+json"')
+
+    @override_settings(SEO_INDEXING_ENABLED=False)
+    def test_nonproduction_pages_are_not_indexable(self):
+        response = self.client.get(reverse("sklepzdoniczkami:home"))
+        self.assertContains(response, 'name="robots" content="noindex,nofollow"')
+
+    def test_order_confirmation_is_never_indexable(self):
+        order = Order.objects.create(
+            first_name="Anna",
+            last_name="Kowalska",
+            email="anna@example.com",
+            address="ul. Zielona 1",
+            city="Warszawa",
+            postal_code="00-001",
+            shipping_method="courier",
+            shipping_cost=Decimal("19.99"),
+        )
+        response = self.client.get(
+            reverse(
+                "sklepzdoniczkami:checkout_success",
+                kwargs={"order_token": make_order_access_token(order)},
+            )
+        )
+        self.assertContains(response, 'name="robots" content="noindex,nofollow"')
 
 
 class PreprodSeedCommandTests(TestCase):
@@ -54,87 +181,781 @@ class PreprodSeedCommandTests(TestCase):
 
     @override_settings(APP_ENV="preprod")
     def test_seed_command_creates_only_idempotent_synthetic_catalogue(self):
+        legacy_category = Category.objects.create(
+            name="Doniczki — preprod",
+            slug="preprod-doniczki",
+        )
+        legacy_product = Product.objects.create(
+            category=legacy_category,
+            name="Doniczka ceramiczna — test",
+            slug="preprod-doniczka-ceramiczna",
+            description="Syntetyczny produkt demonstracyjny.",
+            price=Decimal("49.90"),
+            stock=0,
+            is_active=True,
+        )
         call_command("seed_preprod_data", verbosity=0)
         call_command("seed_preprod_data", verbosity=0)
 
-        self.assertEqual(Category.objects.filter(slug__startswith="preprod-").count(), 2)
-        self.assertEqual(Product.objects.filter(slug__startswith="preprod-").count(), 3)
+        self.assertEqual(Category.objects.filter(slug__startswith="preprod-").count(), 0)
+        self.assertEqual(Product.objects.filter(slug__startswith="preprod-").count(), 0)
+        self.assertEqual(Category.objects.count(), 1)
+        self.assertEqual(
+            Product.objects.filter(
+                slug="doniczka-ceramiczna"
+            ).count(),
+            1,
+        )
         self.assertFalse(get_user_model().objects.exists())
         self.assertFalse(Order.objects.exists())
-        self.assertTrue(
-            Product.objects.filter(slug="preprod-monstera-deliciosa").exists()
+        product = Product.objects.get(slug="doniczka-ceramiczna")
+        self.assertEqual(product.pk, legacy_product.pk)
+        self.assertEqual(product.name, "Doniczka ceramiczna")
+        self.assertEqual(product.stock, 0)
+        self.assertEqual(product.price, Decimal("49.90"))
+        self.assertEqual(
+            product.image,
+            "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
         )
+
+        product.stock = 3
+        product.price = "75.00"
+        product.image = ""
+        product.save(update_fields=["stock", "price", "image"])
+        call_command("seed_preprod_data", verbosity=0)
+        product.refresh_from_db()
+        self.assertEqual(product.stock, 3)
+        self.assertEqual(product.price, Decimal("75.00"))
+        self.assertEqual(
+            product.image,
+            "/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+        )
+
+
+class ProductionPreviewCatalogCommandTests(TestCase):
+    def production_database_connection(self, *, options=None):
+        cursor = MagicMock()
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PORT": "5432",
+            "OPTIONS": options or {},
+        }
+        database.cursor.return_value.__enter__.return_value = cursor
+        return database, cursor
+
+    def test_database_validation_accepts_restricted_runtime_user(self):
+        database, cursor = self.production_database_connection()
+        cursor.fetchone.side_effect = [
+            (
+                "sklepzdoniczkami_prod",
+                "sklepzdoniczkami_prod_web_limited",
+                "public",
+            ),
+            (False, False, False, False, False, False, False, False),
+        ]
+        with patch(
+            "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+            {"default": database},
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    def test_database_validation_rejects_runtime_user_with_elevated_privileges(self):
+        privileged_results = (
+            (True, False, False, False, False, False, False, False),
+            (False, True, False, False, False, False, False, False),
+            (False, False, False, False, False, False, False, True),
+        )
+        for privileges in privileged_results:
+            with self.subTest(privileges=privileges):
+                database, cursor = self.production_database_connection()
+                cursor.fetchone.side_effect = [
+                    (
+                        "sklepzdoniczkami_prod",
+                        "sklepzdoniczkami_prod_web_limited",
+                        "public",
+                    ),
+                    privileges,
+                ]
+                with (
+                    patch(
+                        "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                        {"default": database},
+                    ),
+                    self.assertRaisesMessage(
+                        CommandError, "excessive database privileges"
+                    ),
+                ):
+                    SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    def test_database_validation_rejects_connection_routing_override(self):
+        database, _ = self.production_database_connection(
+            options={"hostaddr": "203.0.113.1"}
+        )
+        with (
+            patch(
+                "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                {"default": database},
+            ),
+            self.assertRaisesMessage(CommandError, "pinned production database"),
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+        database.cursor.assert_not_called()
+
+    def test_database_validation_rejects_nonlocal_database(self):
+        database, cursor = self.production_database_connection()
+        database.settings_dict["HOST"] = "db.example"
+        with (
+            patch(
+                "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                {"default": database},
+            ),
+            self.assertRaisesMessage(CommandError, "pinned production database"),
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    def test_database_validation_rejects_database_owner_user(self):
+        database, cursor = self.production_database_connection()
+        database.settings_dict["USER"] = "sklepzdoniczkami_prod"
+        with (
+            patch(
+                "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                {"default": database},
+            ),
+            self.assertRaisesMessage(CommandError, "pinned production database"),
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    @override_settings(APP_ENV="development")
+    def test_preview_command_refuses_to_run_outside_production(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "APP_ENV=production"):
+                call_command("seed_production_preview_catalog", confirm_production_preview=True)
+
+        self.assertFalse(Category.objects.filter(slug="rosliny-zielone").exists())
+        self.assertFalse(Product.objects.filter(slug="monstera-deliciosa").exists())
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_requires_explicit_confirmation(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "--confirm-production-preview"):
+                call_command("seed_production_preview_catalog")
+
+        self.assertFalse(Category.objects.filter(slug="rosliny-zielone").exists())
+        self.assertFalse(Product.objects.filter(slug="monstera-deliciosa").exists())
+
+    @override_settings(APP_ENV="production")
+    def test_preview_catalog_is_idempotent_and_never_sellable(self):
+        legacy_category = Category.objects.create(
+            name="Doniczki — preprod",
+            slug="preprod-doniczki",
+        )
+        legacy_product = Product.objects.create(
+            category=legacy_category,
+            name="Doniczka ceramiczna — test",
+            slug="preprod-doniczka-ceramiczna",
+            description="Syntetyczny produkt demonstracyjny.",
+            price=Decimal("49.90"),
+            stock=0,
+            is_active=True,
+        )
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            call_command(
+                "seed_production_preview_catalog",
+                confirm_production_preview=True,
+                verbosity=0,
+            )
+            call_command(
+                "seed_production_preview_catalog",
+                confirm_production_preview=True,
+                verbosity=0,
+            )
+
+        products = Product.objects.filter(slug="doniczka-ceramiczna")
+        self.assertEqual(products.count(), 1)
+        self.assertEqual(products.filter(stock=0, is_active=True).count(), 1)
+        self.assertEqual(products.exclude(image="").count(), 1)
+        pot = products.get()
+        self.assertEqual(pot.pk, legacy_product.pk)
+        self.assertEqual(pot.price, Decimal("49.90"))
+        self.assertEqual(pot.name, "Doniczka ceramiczna")
+        self.assertFalse(Order.objects.exists())
+        homepage = self.client.get(reverse("sklepzdoniczkami:home"))
+        self.assertContains(homepage, "Doniczka ceramiczna")
+        self.assertNotContains(homepage, "Monstera deliciosa")
+        self.assertNotContains(homepage, "test")
+        self.assertNotContains(homepage, "Syntetyczna")
+        self.assertNotContains(homepage, "49.90")
+        detail_url = reverse("sklepzdoniczkami:product", args=["doniczka-ceramiczna"])
+        detail = self.client.get(detail_url)
+        self.assertContains(detail, "Obecnie niedostępny")
+        self.assertNotContains(detail, "test")
+        self.assertNotContains(detail, "49.90")
+        self.assertNotContains(detail, "/cart/add/")
+        legacy_url = reverse(
+            "sklepzdoniczkami:product",
+            args=["preprod-doniczka-ceramiczna"],
+        )
+        response = self.client.get(legacy_url)
+        self.assertRedirects(response, detail_url, status_code=301, fetch_redirect_response=False)
+        legacy_category_url = reverse(
+            "sklepzdoniczkami:category",
+            args=["preprod-doniczki"],
+        )
+        category_url = reverse(
+            "sklepzdoniczkami:category",
+            args=["doniczki"],
+        )
+        category_response = self.client.get(legacy_category_url)
+        self.assertRedirects(
+            category_response,
+            category_url,
+            status_code=301,
+            fetch_redirect_response=False,
+        )
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_to_overwrite_existing_stock(self):
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            call_command(
+                "seed_production_preview_catalog",
+                confirm_production_preview=True,
+                verbosity=0,
+            )
+            product = Product.objects.get(slug="doniczka-ceramiczna")
+            product.stock = 1
+            product.save(update_fields=["stock"])
+
+            with self.assertRaisesMessage(CommandError, "has nonzero stock"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        product.refresh_from_db()
+        self.assertEqual(product.stock, 1)
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_to_overwrite_unrecognized_zero_stock_product(self):
+        category = Category.objects.get(slug="doniczki")
+        product = Product.objects.create(
+            category=category,
+            name="Doniczka właściciela",
+            slug="doniczka-ceramiczna",
+            description="Oryginalny opis produktu.",
+            price=Decimal("79.90"),
+            stock=0,
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "has conflicting data"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        product.refresh_from_db()
+        self.assertEqual(product.name, "Doniczka właściciela")
+        self.assertEqual(product.description, "Oryginalny opis produktu.")
+        self.assertEqual(product.price, Decimal("79.90"))
+        self.assertEqual(product.slug, "doniczka-ceramiczna")
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_duplicate_canonical_and_legacy_products(self):
+        category = Category.objects.get(slug="doniczki")
+        legacy_category = Category.objects.create(
+            name="Doniczki — preprod",
+            slug="preprod-doniczki",
+        )
+        canonical_product = Product.objects.create(
+            category=category,
+            name="Doniczka ceramiczna",
+            slug="doniczka-ceramiczna",
+            description="Ceramiczna doniczka o ponadczasowej formie.",
+            price=Decimal("39.90"),
+            stock=0,
+            image="/static/sklepzdoniczkami/img/products/pot-ceramic.jpg",
+        )
+        legacy_product = Product.objects.create(
+            category=legacy_category,
+            name="Doniczka ceramiczna — test",
+            slug="preprod-doniczka-ceramiczna",
+            description="Syntetyczny produkt demonstracyjny.",
+            price=Decimal("49.90"),
+            stock=0,
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "Both canonical and legacy"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        canonical_product.refresh_from_db()
+        legacy_product.refresh_from_db()
+        self.assertEqual(canonical_product.name, "Doniczka ceramiczna")
+        self.assertEqual(legacy_product.slug, "preprod-doniczka-ceramiczna")
+        self.assertEqual(legacy_product.category_id, legacy_category.pk)
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_to_rename_conflicting_category(self):
+        category = Category.objects.get(slug="doniczki")
+        category.name = "Kolekcja właściciela"
+        category.save(update_fields=["name"])
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "has conflicting data"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        category.refresh_from_db()
+        self.assertEqual(category.name, "Kolekcja właściciela")
+
+    @override_settings(APP_ENV="production")
+    def test_preview_command_refuses_legacy_category_with_unrelated_products(self):
+        category = Category.objects.create(
+            name="Doniczki — preprod",
+            slug="preprod-doniczki",
+        )
+        product = Product.objects.create(
+            category=category,
+            name="Produkt właściciela",
+            slug="produkt-wlasciciela",
+            description="Produkt spoza katalogu podglądowego.",
+            price=Decimal("59.90"),
+            stock=0,
+        )
+
+        with patch.object(SeedProductionPreviewCatalogCommand, "validate_production_database"):
+            with self.assertRaisesMessage(CommandError, "contains unrelated products"):
+                call_command(
+                    "seed_production_preview_catalog",
+                    confirm_production_preview=True,
+                    verbosity=0,
+                )
+
+        category.refresh_from_db()
+        product.refresh_from_db()
+        self.assertEqual(category.slug, "preprod-doniczki")
+        self.assertEqual(product.category_id, category.pk)
+
+
+class FirstAdminBootstrapCommandTests(TestCase):
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_creates_first_superuser_without_printing_password(self):
+        password = "Quartz-Birch-83-Riverstone!"
+        output = StringIO()
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": password}):
+            with patch.object(BootstrapFirstAdminCommand, "validate_production_database"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                    stdout=output,
+                    verbosity=0,
+                )
+
+        user = User.objects.get(username="store-admin")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password(password))
+        self.assertNotIn(password, output.getvalue())
+
+    @override_settings(APP_ENV="development")
+    def test_bootstrap_refuses_nonproduction_environment(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "APP_ENV=production"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+
+    @override_settings(APP_ENV="production")
+    def test_reset_changes_only_the_single_superuser_password(self):
+        admin_user = User.objects.create_superuser(
+            username="store-admin",
+            email="owner@example.com",
+            password="Old-Password-12!",
+        )
+        password = "New-Secure-Password-938!"
+        output = StringIO()
+        with patch.dict("os.environ", {"RESET_ADMIN_PASSWORD": password}):
+            with patch.object(
+                BootstrapFirstAdminCommand,
+                "validate_production_database",
+            ):
+                call_command(
+                    "reset_production_admin_password",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                    stdout=output,
+                    verbosity=0,
+                )
+
+        admin_user.refresh_from_db()
+        self.assertTrue(admin_user.check_password(password))
+        self.assertNotIn(password, output.getvalue())
+        self.assertIn("store-admin", output.getvalue())
+
+    @override_settings(APP_ENV="production")
+    def test_reset_refuses_when_superuser_count_is_not_exactly_one(self):
+        with patch.dict("os.environ", {"RESET_ADMIN_PASSWORD": "New-Secure-Password-938!"}):
+            with patch.object(
+                BootstrapFirstAdminCommand,
+                "validate_production_database",
+            ):
+                with self.assertRaisesMessage(
+                    CommandError,
+                    "exactly one production superuser",
+                ):
+                    call_command(
+                        "reset_production_admin_password",
+                        confirm_production_database="sklepzdoniczkami_prod",
+                    )
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_a_second_superuser(self):
+        User.objects.create_superuser(
+            username="existing-admin",
+            email="existing@example.com",
+            password="Quartz-Birch-83-Riverstone!",
+        )
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with patch.object(BootstrapFirstAdminCommand, "validate_production_database"):
+                with self.assertRaisesMessage(CommandError, "already exists"):
+                    call_command(
+                        "bootstrap_first_admin",
+                        username="store-admin",
+                        email="owner@example.com",
+                        confirm_production_database="sklepzdoniczkami_prod",
+                    )
+
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 1)
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_weak_password(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "password123"}):
+            with self.assertRaisesMessage(CommandError, "at least 16 characters"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_numeric_password_that_meets_length_minimum(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "1234567890123456"}):
+            with self.assertRaisesMessage(
+                CommandError, "did not pass validation"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_invalid_email(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(
+                CommandError, "did not pass validation"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="not-an-email",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_empty_username(self):
+        with patch.dict("os.environ", {"INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!"}):
+            with self.assertRaisesMessage(CommandError, "username must not be empty"):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="  ",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_database_target(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+            },
+        ):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_database_url_with_hostaddr_override(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {"hostaddr": "203.0.113.7"},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_database_url_with_search_path_override(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {"options": "-c search_path=other_schema"},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_database_port(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "6543",
+            "OPTIONS": {},
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "INITIAL_ADMIN_PASSWORD": "Quartz-Birch-83-Riverstone!",
+            },
+        ), override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                call_command(
+                    "bootstrap_first_admin",
+                    username="store-admin",
+                    email="owner@example.com",
+                    confirm_production_database="sklepzdoniczkami_prod",
+                )
+
+        self.assertFalse(get_user_model().objects.exists())
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_refuses_unexpected_active_schema(self):
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "OPTIONS": {},
+        }
+        cursor = database.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
+            "unexpected_schema",
+        )
+
+        with patch(
+            "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+        ) as connection_handler:
+            connection_handler.__getitem__.return_value = database
+            with self.assertRaisesMessage(
+                CommandError, "does not match the production target"
+            ):
+                BootstrapFirstAdminCommand().validate_production_database()
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_accepts_restricted_runtime_user(self):
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PORT": "5432",
+            "OPTIONS": {},
+        }
+        cursor = database.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
+            "public",
+        )
+
+        with patch(
+            "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+        ) as connection_handler:
+            connection_handler.__getitem__.return_value = database
+            BootstrapFirstAdminCommand().validate_production_database()
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_database_owner_connection(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod",
+            "HOST": "127.0.0.1",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {},
+        }
+        with override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
+            ):
+                BootstrapFirstAdminCommand().validate_production_database()
 
 
 class SampleProductCommandTests(TestCase):
     def test_sample_products_are_idempotent_and_development_only(self):
-        with TemporaryDirectory() as media_root:
-            with override_settings(
-                APP_ENV="development",
-                MEDIA_ROOT=media_root,
-                MEDIA_URL="/media/",
-            ):
-                call_command("load_sample_products", verbosity=0)
-                call_command("load_sample_products", verbosity=0)
+        with override_settings(APP_ENV="development"):
+            call_command("load_sample_products", verbosity=0)
+            call_command("load_sample_products", verbosity=0)
 
-            products = Product.objects.filter(is_active=True)
-            self.assertEqual(products.count(), 5)
-            self.assertTrue(
-                all(product.image.startswith("/media/products/") for product in products)
+        products = Product.objects.filter(is_active=True)
+        self.assertEqual(products.count(), 8)
+        self.assertTrue(
+            all(
+                product.image.startswith(
+                    "/static/sklepzdoniczkami/img/products/"
+                )
+                and product.image.endswith(".svg")
+                for product in products
             )
-            self.assertEqual(
-                {
-                    category.slug: category.products.filter(is_active=True).count()
-                    for category in Category.objects.filter(
-                        slug__in=("ceramiczne", "plastikowe", "cementowe")
-                    )
-                },
-                {"ceramiczne": 2, "plastikowe": 2, "cementowe": 1},
-            )
+        )
+        self.assertEqual(
+            {
+                category.slug: category.products.filter(is_active=True).count()
+                for category in Category.objects.filter(
+                    slug__in=("betonowe", "drewniane", "plastikowe")
+                )
+            },
+            {"betonowe": 2, "drewniane": 2, "plastikowe": 4},
+        )
+        self.assertEqual(
+            Product.objects.get(slug="doniczka-betonowa-kamien").stock,
+            8,
+        )
+        self.assertEqual(
+            Product.objects.get(slug="doniczka-plastikowa-balkonowa").stock,
+            15,
+        )
 
-            response = self.client.get(reverse("sklepzdoniczkami:products"))
-            self.assertContains(response, "Wybierz materiał")
-            self.assertContains(response, "Ceramiczne")
-            self.assertContains(response, "Plastikowe")
-            self.assertContains(response, "Cementowe")
-            self.assertContains(response, "2 pozycji")
+        response = self.client.get(reverse("sklepzdoniczkami:products"))
+        self.assertContains(response, "Wszystkie produkty")
+        self.assertContains(response, "Betonowe")
+        self.assertContains(response, "Drewniane")
+        self.assertContains(response, "Plastikowe")
+        self.assertContains(response, "/static/sklepzdoniczkami/img/categories/betonowe.svg")
+        self.assertNotContains(response, "Ceramiczne")
+        self.assertNotContains(response, "Cementowe")
 
-            plastic_category = Category.objects.get(slug="plastikowe")
-            filtered_response = self.client.get(plastic_category.get_absolute_url())
-            self.assertContains(filtered_response, "Kolorowy zestaw doniczek plastikowych")
-            self.assertContains(filtered_response, "Duża doniczka plastikowa ogrodowa")
-            self.assertNotContains(filtered_response, "Doniczka cementowa klasyczna")
+        plastic_category = Category.objects.get(slug="plastikowe")
+        filtered_response = self.client.get(plastic_category.get_absolute_url())
+        self.assertContains(filtered_response, "Kolorowy zestaw doniczek plastikowych")
+        self.assertContains(filtered_response, "Duża doniczka plastikowa ogrodowa")
+        self.assertContains(filtered_response, "Doniczka plastikowa balkonowa")
+        self.assertNotContains(filtered_response, "Doniczka cementowa klasyczna")
 
     def test_sample_command_preserves_legacy_product_when_canonical_slug_exists(self):
         category = Category.objects.create(name="Stara kategoria", slug="stara-kategoria")
         legacy_product = Product.objects.create(
             category=category,
-            name="Starszy produkt",
-            slug="doniczka-terakotowa-na-podstawce",
+            name="Starszy zestaw",
+            slug="zestaw-doniczek-z-terakoty",
             price="10.00",
             stock=1,
         )
         Product.objects.create(
             category=category,
-            name="Istniejący produkt",
-            slug="doniczka-ceramiczna-na-podstawce",
+            name="Istniejący zestaw",
+            slug="zestaw-doniczek-plastikowych",
             price="20.00",
             stock=1,
         )
 
-        with TemporaryDirectory() as media_root:
-            with override_settings(
-                APP_ENV="development",
-                MEDIA_ROOT=media_root,
-                MEDIA_URL="/media/",
-            ):
-                call_command("load_sample_products", verbosity=0)
+        with override_settings(APP_ENV="development"):
+            call_command("load_sample_products", verbosity=0)
 
         legacy_product.refresh_from_db()
-        canonical_product = Product.objects.get(slug="doniczka-ceramiczna-na-podstawce")
+        canonical_product = Product.objects.get(slug="zestaw-doniczek-plastikowych")
         self.assertFalse(legacy_product.is_active)
+        self.assertEqual(legacy_product.stock, 0)
         self.assertTrue(canonical_product.is_active)
-        self.assertEqual(canonical_product.name, "Doniczka ceramiczna na podstawce")
+        self.assertEqual(canonical_product.name, "Kolorowy zestaw doniczek plastikowych")
 
     @override_settings(APP_ENV="preprod")
     def test_sample_products_command_refuses_to_run_outside_development(self):
@@ -142,6 +963,16 @@ class SampleProductCommandTests(TestCase):
             call_command("load_sample_products")
 
         self.assertFalse(Product.objects.filter(is_active=True).exists())
+
+
+class SecureRedirectConfigurationTests(SimpleTestCase):
+    def test_direct_tls_environments_do_not_redirect(self):
+        self.assertFalse(resolve_secure_ssl_redirect("development", "True"))
+        self.assertFalse(resolve_secure_ssl_redirect("preprod", "True"))
+
+    def test_production_redirect_can_be_disabled_explicitly(self):
+        self.assertTrue(resolve_secure_ssl_redirect("production", "True"))
+        self.assertFalse(resolve_secure_ssl_redirect("production", "False"))
 
 
 class StripeConfigurationTests(TestCase):
@@ -173,12 +1004,15 @@ class StripeConfigurationTests(TestCase):
 
 class ProductCatalogTests(TestCase):
     def setUp(self):
-        self.category = Category.objects.create(name="Elektronika", slug="elektronika")
+        self.category, _ = Category.objects.get_or_create(
+            slug="doniczki",
+            defaults={"name": "Doniczki"},
+        )
         self.product = Product.objects.create(
             category=self.category,
-            name="Laptop Pro",
-            slug="laptop-pro",
-            description="Nowoczesny laptop do pracy i nauki.",
+            name="Doniczka ceramiczna",
+            slug="doniczka-ceramiczna-testowa",
+            description="Ceramiczna doniczka do domu.",
             price=3499.99,
             stock=10,
             is_active=True,
@@ -187,18 +1021,297 @@ class ProductCatalogTests(TestCase):
     def test_product_list_page_renders(self):
         response = self.client.get(reverse("sklepzdoniczkami:home"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Laptop Pro")
+        self.assertContains(response, "Doniczka ceramiczna")
 
     def test_product_search_filters_results(self):
-        response = self.client.get(reverse("sklepzdoniczkami:products"), {"q": "laptop"})
+        response = self.client.get(reverse("sklepzdoniczkami:products"), {"q": "ceramiczna"})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Laptop Pro")
+        self.assertContains(response, "Doniczka ceramiczna")
 
     def test_product_detail_page_renders(self):
         response = self.client.get(reverse("sklepzdoniczkami:product", kwargs={"slug": self.product.slug}))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Laptop Pro")
-        self.assertContains(response, "Nowoczesny laptop do pracy i nauki.")
+        self.assertContains(response, "Doniczka ceramiczna")
+        self.assertContains(response, "Ceramiczna doniczka do domu.")
+
+    def test_non_pot_products_are_hidden_and_cannot_be_added_to_cart(self):
+        plant_category = Category.objects.create(
+            name="Rośliny zielone",
+            slug="rosliny-zielone",
+        )
+        plant = Product.objects.create(
+            category=plant_category,
+            name="Monstera",
+            slug="monstera-testowa",
+            price=49.90,
+            stock=5,
+        )
+
+        listing = self.client.get(reverse("sklepzdoniczkami:products"))
+        detail = self.client.get(
+            reverse("sklepzdoniczkami:product", kwargs={"slug": plant.slug})
+        )
+        self.client.post(
+            reverse("sklepzdoniczkami:add_to_cart", kwargs={"product_id": plant.pk})
+        )
+
+        self.assertNotContains(listing, "Monstera")
+        self.assertEqual(detail.status_code, 404)
+        self.assertNotIn(str(plant.pk), self.client.session.get("cart", {}))
+
+    def test_catalog_migration_deactivates_non_pot_products_without_deleting_them(self):
+        plant_category = Category.objects.create(
+            name="Rośliny zielone",
+            slug="rosliny-zielone",
+        )
+        plant = Product.objects.create(
+            category=plant_category,
+            name="Monstera",
+            slug="monstera-migracyjna",
+            price=49.90,
+            stock=5,
+        )
+
+        catalog_visibility_migration.hide_non_pot_products(
+            apps,
+            SimpleNamespace(connection=connection),
+        )
+
+        plant.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertFalse(plant.is_active)
+        self.assertTrue(Product.objects.filter(pk=plant.pk).exists())
+        self.assertTrue(self.product.is_active)
+
+    def test_login_fields_are_labeled_styled_and_autofill_ready(self):
+        response = self.client.get(reverse("sklepzdoniczkami:login"))
+
+        self.assertContains(response, '<label for="id_username">')
+        self.assertContains(response, 'autocomplete="username"')
+        self.assertContains(response, 'autocomplete="current-password"')
+        self.assertContains(response, 'class="form-field account-form-field"')
+
+    def test_admin_login_has_password_reset_link(self):
+        response = self.client.get(reverse("admin:login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("admin_password_reset"))
+
+    def test_storefront_login_has_password_reset_link(self):
+        response = self.client.get(reverse("sklepzdoniczkami:login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("sklepzdoniczkami:password_reset"))
+
+    @override_settings(PASSWORD_RESET_EMAIL_CONFIGURED=False)
+    def test_storefront_password_reset_requires_email_configuration(self):
+        response = self.client.get(reverse("sklepzdoniczkami:password_reset"))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(response, "Wysyłka e-maili", status_code=503)
+
+    @override_settings(
+        PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    @patch(
+        "sklepzdoniczkami.forms.StorefrontPasswordResetForm.send_mail",
+        side_effect=TimeoutError,
+    )
+    def test_storefront_password_reset_shows_service_error_when_email_times_out(
+        self,
+        _send_mail,
+    ):
+        get_user_model().objects.create_user(
+            username="customer-reset-timeout",
+            email="customer-timeout@example.com",
+            password="Customer-Password-9481!",
+        )
+
+        response = self.client.post(
+            reverse("sklepzdoniczkami:password_reset"),
+            {"email": "customer-timeout@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(
+            response,
+            "Nie udało się wysłać wiadomości z linkiem resetującym",
+            status_code=503,
+        )
+
+    @override_settings(
+        PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="no-reply@example.com",
+    )
+    def test_storefront_password_reset_changes_password(self):
+        customer = get_user_model().objects.create_user(
+            username="customer-reset",
+            email="customer@example.com",
+            password="Old-Customer-Password-239!",
+        )
+
+        response = self.client.post(
+            reverse("sklepzdoniczkami:password_reset"),
+            {"email": "customer@example.com"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_done"),
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["customer@example.com"])
+        reset_path = mail.outbox[0].body.split("http://testserver", 1)[1].splitlines()[0]
+
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 302)
+        reset_path = response["Location"]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reset_path,
+            {
+                "new_password1": "New-Customer-Password-9481!",
+                "new_password2": "New-Customer-Password-9481!",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_complete"),
+        )
+        customer.refresh_from_db()
+        self.assertTrue(customer.check_password("New-Customer-Password-9481!"))
+
+    @override_settings(
+        PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="no-reply@example.com",
+    )
+    def test_storefront_password_reset_supports_legacy_email_username(self):
+        legacy_user = get_user_model().objects.create_user(
+            username="Legacy@example.com",
+            email="",
+            password="Old-Customer-Password-239!",
+        )
+
+        response = self.client.post(
+            reverse("sklepzdoniczkami:password_reset"),
+            {"email": "legacy@example.com"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_done"),
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["Legacy@example.com"])
+        reset_path = mail.outbox[0].body.split("http://testserver", 1)[1].splitlines()[0]
+
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 302)
+        reset_path = response["Location"]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reset_path,
+            {
+                "new_password1": "New-Legacy-Password-9481!",
+                "new_password2": "New-Legacy-Password-9481!",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("sklepzdoniczkami:password_reset_complete"),
+        )
+        legacy_user.refresh_from_db()
+        self.assertTrue(legacy_user.check_password("New-Legacy-Password-9481!"))
+        self.assertEqual(legacy_user.email, "Legacy@example.com")
+
+    @override_settings(ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=False)
+    def test_password_reset_does_not_show_reset_form_without_smtp(self):
+        response = self.client.get(reverse("admin_password_reset"))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(response, "Wysyłka e-maili", status_code=503)
+
+    @override_settings(
+        ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    )
+    @patch(
+        "sklepzdoniczkami.auth_views.AdminPasswordResetForm.send_mail",
+        side_effect=TimeoutError,
+    )
+    def test_admin_password_reset_shows_service_error_when_email_times_out(
+        self,
+        _send_mail,
+    ):
+        get_user_model().objects.create_superuser(
+            username="shop-admin-timeout",
+            email="admin-timeout@example.com",
+            password="Admin-Password-9481!",
+        )
+
+        response = self.client.post(
+            reverse("admin_password_reset"),
+            {"email": "admin-timeout@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(
+            response,
+            "Nie udało się wysłać wiadomości z linkiem resetującym",
+            status_code=503,
+        )
+
+    @override_settings(
+        ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED=True,
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="no-reply@example.com",
+    )
+    def test_reset_email_only_targets_active_superusers_and_resets_password(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="shop-admin",
+            email="owner@example.com",
+            password="Old-Password-123!",
+        )
+        get_user_model().objects.create_user(
+            username="customer",
+            email="owner@example.com",
+            password="Customer-Password-123!",
+        )
+
+        response = self.client.post(
+            reverse("admin_password_reset"),
+            {"email": "owner@example.com"},
+        )
+
+        self.assertRedirects(response, reverse("admin_password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["owner@example.com"])
+        self.assertIn("admin/reset/", mail.outbox[0].body)
+
+        reset_path = mail.outbox[0].body.split("https://testserver", 1)[1].splitlines()[0]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 302)
+        reset_path = response["Location"]
+        response = self.client.get(reset_path)
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reset_path,
+            {
+                "new_password1": "New-Admin-Password-9481!",
+                "new_password2": "New-Admin-Password-9481!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("admin_password_reset_complete"))
+        admin_user.refresh_from_db()
+        self.assertTrue(admin_user.check_password("New-Admin-Password-9481!"))
 
     def test_add_to_cart_and_checkout(self):
         add_response = self.client.post(
@@ -1007,10 +2120,16 @@ class ProductCatalogTests(TestCase):
     def test_user_registration_and_profile(self):
         response = self.client.post(
             reverse("sklepzdoniczkami:register"),
-            {"username": "testuser", "password1": "StrongPass123!", "password2": "StrongPass123!"},
+            {
+                "username": "testuser",
+                "email": "testuser@example.com",
+                "password1": "StrongPass123!",
+                "password2": "StrongPass123!",
+            },
         )
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(get_user_model().objects.filter(username="testuser").exists())
+        user = get_user_model().objects.get(username="testuser")
+        self.assertEqual(user.email, "testuser@example.com")
 
         response = self.client.get(reverse("sklepzdoniczkami:profile"))
         self.assertEqual(response.status_code, 200)

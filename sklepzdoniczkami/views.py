@@ -6,10 +6,10 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -17,7 +17,16 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, ListView
 
+from .catalog import (
+    POT_CATEGORY_SLUGS,
+    RETIRED_CATEGORY_SLUGS,
+    RETIRED_PRODUCT_SLUGS,
+    public_categories,
+    public_products,
+)
+from .forms import CustomerCreationForm
 from .models import Category, Order, OrderItem, Product
+from .sample_catalog import SAMPLE_CATALOG
 from .services import cancel_order_and_release_inventory, reserve_order_inventory
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -60,7 +69,7 @@ def save_cart(request, cart):
 def cart_items(request):
     cart = get_cart(request)
     product_ids = list(cart.keys())
-    products = Product.objects.filter(id__in=product_ids, is_active=True).select_related("category")
+    products = public_products().filter(id__in=product_ids).select_related("category")
     items = []
     total = Decimal("0")
     for product in products:
@@ -84,7 +93,7 @@ class ProductListView(ListView):
     paginate_by = 12
 
     def get_queryset(self):
-        queryset = Product.objects.filter(is_active=True).select_related("category")
+        queryset = public_products().select_related("category")
         query = self.request.GET.get("q")
         if query:
             queryset = queryset.filter(
@@ -95,29 +104,53 @@ class ProductListView(ListView):
             queryset = queryset.filter(category__slug=category_slug)
         return queryset.order_by("name")
 
+    def get(self, request, *args, **kwargs):
+        category_aliases = {
+            sample["category"].get("legacy_slug"): sample["category"]["slug"]
+            for sample in SAMPLE_CATALOG
+            if sample["category"].get("legacy_slug")
+        }
+        category_slug = kwargs.get("slug")
+        if category_slug in category_aliases:
+            return redirect(
+                "sklepzdoniczkami:category",
+                slug=category_aliases[category_slug],
+                permanent=True,
+            )
+        if category_slug in RETIRED_CATEGORY_SLUGS:
+            return redirect("sklepzdoniczkami:products", permanent=True)
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["active_category"] = Category.objects.filter(slug=self.kwargs.get("slug")).first()
-        categories = (
-            Category.objects.filter(products__is_active=True)
-            .annotate(product_count=Count("products", filter=Q(products__is_active=True)))
-            .distinct()
-            .order_by("name")
-        )
+        context["active_category"] = Category.objects.filter(
+            slug=self.kwargs.get("slug"),
+            slug__in=POT_CATEGORY_SLUGS,
+        ).first()
+        categories = public_categories()
         card_details = {
-            "ceramiczne": {
-                "image": "sklepzdoniczkami/img/products/pot-ceramic.jpg",
-                "description": "Szkliwione wykończenia i ponadczasowe kształty.",
+            sample["category"]["slug"]: {
+                "image": sample["category_image"],
+                "description": sample["category"].get(
+                    "description", "Rośliny i dodatki, które wnoszą zieleń do wnętrza."
+                ),
+            }
+            for sample in SAMPLE_CATALOG
+        }
+        card_details.update({
+            "betonowe": {
+                "image": "sklepzdoniczkami/img/categories/betonowe.svg",
+                "description": "Stabilne, minimalistyczne formy o kamiennym charakterze.",
+            },
+            "drewniane": {
+                "image": "sklepzdoniczkami/img/categories/drewniane.svg",
+                "description": "Naturalne usłojenie i ciepłe odcienie drewna.",
             },
             "plastikowe": {
-                "image": "sklepzdoniczkami/img/products/pot-plastic.jpg",
-                "description": "Lekkie, praktyczne i dostępne w wielu kolorach.",
+                "image": "sklepzdoniczkami/img/categories/plastikowe.svg",
+                "description": "Lekkie, praktyczne doniczki do domu i na balkon.",
             },
-            "cementowe": {
-                "image": "sklepzdoniczkami/img/products/pot-cement.jpg",
-                "description": "Proste formy o surowym, nowoczesnym charakterze.",
-            },
-        }
+        })
         context["categories"] = categories
         context["category_cards"] = [
             {
@@ -140,17 +173,35 @@ class ProductDetailView(DetailView):
     template_name = "sklepzdoniczkami/product_detail.html"
     context_object_name = "product"
 
+    def get(self, request, *args, **kwargs):
+        product_aliases = {
+            product.get("legacy_slug"): product["slug"]
+            for sample in SAMPLE_CATALOG
+            for product in sample["products"]
+            if product.get("legacy_slug")
+        }
+        product_slug = kwargs.get("slug")
+        if product_slug in RETIRED_PRODUCT_SLUGS:
+            return redirect("sklepzdoniczkami:products", permanent=True)
+        if product_slug in product_aliases:
+            return redirect(
+                "sklepzdoniczkami:product",
+                slug=product_aliases[product_slug],
+                permanent=True,
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).select_related("category")
+        return public_products().select_related("category")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["related_products"] = (
-            Product.objects.filter(category=self.object.category, is_active=True)
+            public_products().filter(category=self.object.category)
             .exclude(pk=self.object.pk)
             .order_by("name")[:4]
         )
-        context["categories"] = Category.objects.filter(products__is_active=True).distinct().order_by("name")
+        context["categories"] = public_categories()
         return context
 
 
@@ -159,7 +210,7 @@ def cart_view(request):
     context = {
         "items": items,
         "total": total,
-        "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
+        "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/cart.html", context)
 
@@ -168,7 +219,7 @@ def add_to_cart(request, product_id):
     if request.method != "POST":
         return redirect("sklepzdoniczkami:products")
 
-    product = Product.objects.filter(id=product_id, is_active=True).first()
+    product = public_products().filter(id=product_id).first()
     if not product:
         messages.error(request, "Produkt nie istnieje lub jest niedostępny.")
         return redirect("sklepzdoniczkami:products")
@@ -235,7 +286,11 @@ def checkout_view(request):
                 locked_products = {
                     product.pk: product
                     for product in Product.objects.select_for_update()
-                    .filter(pk__in=product_ids, is_active=True)
+                    .filter(
+                        pk__in=product_ids,
+                        is_active=True,
+                        category__slug__in=POT_CATEGORY_SLUGS,
+                    )
                     .order_by("pk")
                 }
                 unavailable = [
@@ -302,7 +357,7 @@ def checkout_view(request):
         "total": total,
         "shipping_costs": shipping_costs,
         "stripe_enabled": settings.STRIPE_ENABLED,
-        "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
+        "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/checkout.html", context)
 
@@ -672,7 +727,7 @@ def checkout_success(request, order_token):
     order = get_order_from_access_token(order_token)
     context = {
         "order": order,
-        "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
+        "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/checkout_success.html", context)
 
@@ -682,6 +737,15 @@ def login_view(request):
         return redirect("sklepzdoniczkami:profile")
 
     form = AuthenticationForm(request, data=request.POST or None)
+    form.fields["username"].widget.attrs.update(
+        {
+            "autocomplete": "username",
+            "autocapitalize": "none",
+            "spellcheck": "false",
+            "autofocus": True,
+        }
+    )
+    form.fields["password"].widget.attrs["autocomplete"] = "current-password"
     if request.method == "POST" and form.is_valid():
         login(request, form.get_user())
         messages.success(request, "Zalogowano pomyślnie.")
@@ -689,7 +753,7 @@ def login_view(request):
 
     context = {
         "form": form,
-        "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
+        "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/login.html", context)
 
@@ -698,7 +762,7 @@ def register_view(request):
     if request.user.is_authenticated:
         return redirect("sklepzdoniczkami:profile")
 
-    form = UserCreationForm(request.POST or None)
+    form = CustomerCreationForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
         login(request, user)
@@ -707,7 +771,7 @@ def register_view(request):
 
     context = {
         "form": form,
-        "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
+        "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/register.html", context)
 
@@ -717,7 +781,7 @@ def profile_view(request):
     orders = request.user.orders.order_by("-created_at")
     context = {
         "orders": orders,
-        "categories": Category.objects.filter(products__is_active=True).distinct().order_by("name"),
+        "categories": public_categories(),
     }
     return render(request, "sklepzdoniczkami/profile.html", context)
 

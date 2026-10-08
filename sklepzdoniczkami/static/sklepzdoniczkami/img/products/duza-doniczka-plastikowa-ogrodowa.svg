@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img">
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#f0e9dd"/><stop offset="1" stop-color="#dfd3c0"/></linearGradient>
+    <linearGradient id="pot" x2="1" y2="1"><stop stop-color="#c78868"/><stop offset="1" stop-color="#9b604c"/></linearGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#bg)"/>
+  <circle cx="348" cy="126" r="75" fill="#fbf6ea" opacity=".64"/>
+  <path d="M62 399h356" stroke="#c9bba5" stroke-width="3"/>
+  <g fill="none" stroke="#687f59" stroke-width="7" stroke-linecap="round">
+    <path d="M237 253c-4-78-17-117-52-158M243 236c23-72 50-106 89-137M232 220c-43-28-75-37-117-31M250 210c38-24 73-31 112-23"/>
+  </g>
+  <g fill="#80936e">
+    <ellipse cx="171" cy="102" rx="39" ry="15" transform="rotate(38 171 102)"/>
+    <ellipse cx="322" cy="97" rx="42" ry="16" transform="rotate(-37 322 97)"/>
+    <ellipse cx="112" cy="184" rx="41" ry="15" transform="rotate(8 112 184)"/>
+    <ellipse cx="365" cy="179" rx="42" ry="16" transform="rotate(-6 365 179)"/>
+  </g>
+  <path d="M125 258h230l-24 119H149z" fill="url(#pot)"/>
+  <path d="M113 247h254v23H113z" fill="#a76d55"/>
+  <path d="M149 290c54 17 118 17 184 0" fill="none" stroke="#dfa88a" stroke-width="4" opacity=".74"/>
+</svg>

@@ -1,19 +1,14 @@
-# Sample pot photos
+# Product and sample images
 
-For a local catalog with five example products, run:
+The catalog's concrete, wood, and plastic category cards and the eight
+development sample products use original SVG illustrations under
+`sklepzdoniczkami/static/sklepzdoniczkami/img/`. They are visual mockups, not
+photographs or confirmation of a real supplier, product specification, or
+available stock. Replace them with accurate product photography and verified
+details before publishing those products for sale.
 
-```powershell
-python manage.py migrate
-python manage.py load_sample_products
-```
-
-The command is restricted to `APP_ENV=development`, is safe to run repeatedly,
-and copies the example photos into `MEDIA_ROOT/products/`. In debug mode,
-Django serves these files from `/media/`.
-
-These sample photos are not product-specific sales images. Replace them with
-accurate photos of the actual pots before enabling the sample products in a
-live catalog.
+The older JPG sample photos remain for the non-sales preview catalog and
+homepage artwork. They are not used by the development catalog seed.
 
 Photo credits:
 
