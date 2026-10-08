@@ -15,9 +15,8 @@ Runbook dotyczy VPS OVH i nie zawiera sekretów.
 Kontrola 2026-10-08: wszystkie trzy usługi Django, PostgreSQL i Caddy są
 aktywne; Caddy przechodzi walidację, a development, preprod i produkcja
 zwracają HTTP 200. PostgreSQL i porty Django są związane z loopbackiem.
-Filesystem `/` ma 9% zajętości. Nie znaleziono znacznika potwierdzonej kopii
-offsite produkcji, więc VPS nie jest gotowy do bezpiecznego przyjmowania
-zamówień.
+Nie znaleziono znacznika potwierdzonej kopii offsite produkcji; backup nie jest
+aktywny, więc VPS nie jest gotowy do bezpiecznego przyjmowania zamówień.
 
 | Środowisko | Kod / Python | Usługa i baza | Dane trwałe |
 | --- | --- | --- | --- |
@@ -30,23 +29,25 @@ SHA wdrożenia jest celowo odczytywany z checkoutu, a nie utrzymywany w tabeli,
 sprawdzisz poleceniem `git -C <ścieżka-checkoutu> rev-parse HEAD`.
 
 Każdy proces działa jako osobny systemowy użytkownik bez powłoki logowania.
-Produkcyjny Gunicorn używa wyłącznie roli PostgreSQL
-`sklepzdoniczkami_prod_web_limited`; nie jest ona właścicielem bazy ani schematu.
-Rola `sklepzdoniczkami_prod` jest właścicielem bazy i służy wyłącznie migracjom.
-Konto systemowe `sklepzdoniczkami-migrator` wykonuje migracje; ma
-dostęp do kodu i venv, ale nie jest kontem usługi.
+**Odstępstwo wykryte 2026-10-08:** produkcyjny Gunicorn łączy się z PostgreSQL
+jako `sklepzdoniczkami_prod`, właściciel bazy; rola
+`sklepzdoniczkami_prod_web_limited` nie istniała. To daje aplikacji zbędne
+uprawnienia właściciela. Nie wdrażaj zmian produkcyjnych ani nie otwieraj sklepu,
+dopóki osobna rola runtime z ograniczonymi uprawnieniami nie zostanie
+skonfigurowana i sprawdzona.
 
-Pliki `development.env`, `preprod.env` i `app.env` są osobno dostępne tylko
-odpowiedniej grupie usługi; `app.env` zawiera poświadczenia wyłącznie ograniczonej
-roli runtime. Plik `migration.env` jest własnością roota, dostępny tylko grupie
-konta migracyjnego i zawiera poświadczenia właściciela bazy. Konto Gunicorna nie
-należy do tej grupy. Nie pokazuj ani nie kopiuj zawartości tych plików. Katalog
-`/etc/sklepzdoniczkami` pozwala na przejście do jawnie znanej ścieżki, ale nie
-na listowanie. Checkouts i venv są czytelne dla usługi oraz konta migracyjnego;
-lokalny checkout `.env` nie jest używany i instalator odrzuca go, jeśli jest
-czytelny grupowo lub publicznie. Systemd ogranicza dostęp procesu m.in. przez
-`ProtectSystem`, `ProtectHome`, `PrivateTmp`, `NoNewPrivileges` i osobne
-`StateDirectory`.
+Konto systemowe `sklepzdoniczkami-migrator` i plik `migration.env` zostały
+utworzone 2026-10-08. Konto nie ma powłoki logowania; plik jest własnością roota,
+ma tryb `0640` i grupę migracyjną. Zawiera poświadczenia właściciela bazy,
+potrzebne do migracji i odtwarzania. `app.env` nadal zawiera poświadczenie tej
+samej roli właściciela, a więc nie zapewnia jeszcze izolacji uprawnień aplikacji.
+Konto Gunicorna nie należy do grupy migracyjnej. Nie pokazuj ani nie kopiuj
+zawartości tych plików. Katalog `/etc/sklepzdoniczkami` pozwala na przejście do
+jawnie znanej ścieżki, ale nie na listowanie. Checkouts i venv są czytelne dla
+usługi oraz konta migracyjnego; lokalny checkout `.env` nie jest używany i
+instalator odrzuca go, jeśli jest czytelny grupowo lub publicznie. Systemd
+ogranicza dostęp procesu m.in. przez `ProtectSystem`, `ProtectHome`,
+`PrivateTmp`, `NoNewPrivileges` i osobne `StateDirectory`.
 
 Instalator `scripts/setup_ubuntu_selfhost.sh` jest przeznaczony wyłącznie dla
 nowego VPS produkcyjnego. Odmawia pracy, jeśli znajdzie istniejącą produkcyjną
@@ -212,17 +213,22 @@ odtworzenia do osobnej bazy. Do tego czasu nie wykonuj migracji produkcyjnej,
 która może utrudnić odtworzenie, i nie traktuj serwera jako gotowego do
 przyjmowania zamówień.
 
-Repozytorium zawiera przygotowany, lecz **nieaktywowany** mechanizm backupu do
-prywatnego magazynu S3-compatible (`scripts/backup_ovh.py`, `deploy/*backup*`).
+Repozytorium zawiera mechanizm backupu do prywatnego magazynu S3-compatible
+(`scripts/backup_ovh.py`, `deploy/*backup*`). Narzędzia i jednostki systemd
+zostały dostarczone na VPS 2026-10-08 pod `/opt/sklepzdoniczkami-backup/`;
+zainstalowano też Restic 0.18.1. Backup pozostaje **nieaktywny**: nie ma
+`/etc/sklepzdoniczkami/backup.env` ani skonfigurowanego bucketu, timer jest
+wyłączony, a znacznik poprawnego odtworzenia nie istnieje. Nie utworzono ani nie
+zweryfikowano żadnej kopii.
 Kopie zawierają custom dump `sklepzdoniczkami_prod` i cały katalog `media/`;
 Restic szyfruje repozytorium, sprawdza jego spójność i utrzymuje 7 kopii
 dziennych, 5 tygodniowych oraz 12 miesięcznych. Codzienny timer jest opóźniany
 losowo do 15 minut. Żadne poświadczenia, bucket ani płatny zasób nie są
-skonfigurowane przez sam kod.
+konfigurowane przez sam kod. Lokalne poświadczenie OVH nie ma obecnie
+uprawnienia do odczytu Cloud API (`GET /me` zwraca HTTP 403).
 
-Po scaleniu narzędzi do `main` i przejściu wszystkich trzech wymaganych kontroli
-CI dostarcz je na VPS osobnym instalatorem. Instalator weryfikuje SHA względem
-`origin/main`, tworzy niezmienny katalog wydania pod
+Instalator weryfikuje SHA względem `origin/main`, tworzy niezmienny katalog
+wydania pod
 `/opt/sklepzdoniczkami-backup/`, instaluje jednostki systemd i przeładowuje ich
 definicje. Nie przełącza checkoutu aplikacji, nie wykonuje migracji, nie
 restartuje sklepu i nie włącza timera. Uruchom go lokalnie na Windows:
