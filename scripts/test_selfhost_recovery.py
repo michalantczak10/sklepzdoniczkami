@@ -28,6 +28,26 @@ from scripts.restore_github_production_backup import (
 
 
 class SelfHostRecoveryTests(unittest.TestCase):
+    def test_production_gate_uses_root_controlled_preprod_marker(self):
+        deploy_script = Path(__file__).with_name("deploy_ovh.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'PREPROD_COMMIT_FILE="$PREPROD_MARKER_DIR/preprod-deployed-commit"',
+            deploy_script,
+        )
+        self.assertNotIn(
+            'PREPROD_COMMIT_FILE="/var/lib/sklepzdoniczkami-preprod/deployed-commit"',
+            deploy_script,
+        )
+        self.assertIn(
+            'require_root_controlled_directory "$PREPROD_MARKER_DIR"', deploy_script
+        )
+        self.assertIn('stat -c \'%u\' "$PREPROD_COMMIT_FILE"', deploy_script)
+        self.assertIn('[[ ! "${preprod_marker_mode: -2}" =~ [2367] ]]', deploy_script)
+        self.assertIn('[[ ! "${backup_marker_mode: -2}" =~ [2367] ]]', deploy_script)
+
     def test_backup_package_accepts_only_expected_regular_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

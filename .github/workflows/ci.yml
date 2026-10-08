@@ -32,6 +32,23 @@ jobs:
           bash -n scripts/setup_ubuntu_selfhost.sh
           bash -n scripts/deploy_ovh.sh
 
+      - name: Check PowerShell script syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @('scripts/deploy_ovh.ps1', 'scripts/test_ovh_store.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              throw "$path has PowerShell syntax errors: $errors"
+            }
+          }
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
