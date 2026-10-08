@@ -19,13 +19,30 @@ Runbook dotyczy VPS OVH i nie zawiera sekretów.
 | Produkcja | `/opt/sklepzdoniczkami`, własne `.venv`, commit `adc66a9` | `sklepzdoniczkami.service`, `sklepzdoniczkami_prod` | `/var/lib/sklepzdoniczkami-production` |
 
 Każdy proces działa jako osobny systemowy użytkownik bez powłoki logowania.
+Produkcyjny Gunicorn używa wyłącznie roli PostgreSQL
+`sklepzdoniczkami_prod_web_limited`; nie jest ona właścicielem bazy ani schematu.
+Rola `sklepzdoniczkami_prod` jest właścicielem bazy i służy wyłącznie migracjom.
+Konto systemowe `sklepzdoniczkami-migrator` wykonuje migracje; ma
+dostęp do kodu i venv, ale nie jest kontem usługi.
+
 Pliki `development.env`, `preprod.env` i `app.env` są osobno dostępne tylko
-odpowiedniej grupie usługi; nie pokazuj ich zawartości. Katalog
+odpowiedniej grupie usługi; `app.env` zawiera poświadczenia wyłącznie ograniczonej
+roli runtime. Plik `migration.env` jest własnością roota, dostępny tylko grupie
+konta migracyjnego i zawiera poświadczenia właściciela bazy. Konto Gunicorna nie
+należy do tej grupy. Nie pokazuj ani nie kopiuj zawartości tych plików. Katalog
 `/etc/sklepzdoniczkami` pozwala na przejście do jawnie znanej ścieżki, ale nie
-na listowanie. Checkouts, wirtualne środowiska, katalogi mediów i jednostki
-systemd są rozdzielone. Systemd ogranicza dostęp procesu m.in. przez
+na listowanie. Checkouts i venv są czytelne dla usługi oraz konta migracyjnego;
+lokalny checkout `.env` nie jest używany i instalator odrzuca go, jeśli jest
+czytelny grupowo lub publicznie. Systemd ogranicza dostęp procesu m.in. przez
 `ProtectSystem`, `ProtectHome`, `PrivateTmp`, `NoNewPrivileges` i osobne
 `StateDirectory`.
+
+Instalator `scripts/setup_ubuntu_selfhost.sh` jest przeznaczony wyłącznie dla
+nowego VPS produkcyjnego. Odmawia pracy, jeśli znajdzie istniejącą produkcyjną
+rolę/bazę, usługę, pliki konfiguracyjne, katalog danych lub venv. Po błędzie
+usuwa tylko zasoby utworzone podczas tego uruchomienia i nie usuwa niepustych
+katalogów danych; błędy sprzątania wymagają ręcznej kontroli przed ponowną próbą.
+Pakiety systemowe i konfiguracja repozytorium PGDG mogą pozostać zainstalowane.
 
 ## Certyfikaty TLS dla dev i preprod
 
@@ -131,11 +148,17 @@ GitHub Actions uruchamia testy, ale nie ma dostępu SSH do VPS.
    zatwierdzonego SHA; nie kopiuj `.env`, lokalnej bazy ani katalogu `media`.
 3. Przed migracją sprawdź konfigurację Django, nazwę bazy i migracje na
    docelowej usłudze. Wdrożenie kodu nie może zmieniać URL/roli innego
-   środowiska.
-4. Zastosuj migracje tylko w docelowej bazie, zbierz `staticfiles` i zrestartuj
-   wyłącznie odpowiadającą jej usługę. Sprawdź `/admin/login/`, logi i
-   publiczną stronę po wdrożeniu produkcji. Dla produkcji testuj dokładnie ten
-   sam SHA wcześniej na preprod.
+   środowiska. Nie uruchamiaj migracji jako użytkownik Gunicorna ani jako root
+   z `app.env`; użyj osobnego konta i prywatnego pliku:
+   ```bash
+   sudo runuser -u sklepzdoniczkami-migrator -- env \
+     DJANGO_ENV_FILE=/etc/sklepzdoniczkami/migration.env \
+     /opt/sklepzdoniczkami/.venv/bin/python \
+     /opt/sklepzdoniczkami/manage.py migrate --noinput
+   ```
+4. Zbierz `staticfiles` i zrestartuj wyłącznie odpowiadającą jej usługę.
+   Sprawdź `/admin/login/`, logi i publiczną stronę po wdrożeniu produkcji.
+   Dla produkcji testuj dokładnie ten sam SHA wcześniej na preprod.
 5. Migracje muszą być zgodne wstecznie podczas wdrożenia; wycofanie kodu nie
    cofa zmian schematu ani danych. Przy błędzie zatrzymaj promocję i oceń
    odtworzenie lub osobną migrację naprawczą.
@@ -164,11 +187,12 @@ Jeśli masz wcześniej pobrany zaszyfrowany pakiet bazy w formacie GitHub Action
 (`.tgz` z metadanymi HMAC), repozytorium zawiera narzędzie
 `scripts/restore_github_production_backup.py`. Uruchom je z katalogu
 `/opt/sklepzdoniczkami` jako root, podając dokładnie sprawdzony pakiet; narzędzie
-weryfikuje HMAC, pyta o klucze i wymaga jawnego potwierdzenia przed nadpisaniem
-lokalnej bazy produkcyjnej. Zatrzymuje usługę sklepu na czas odtworzenia i
-pozostawia ją zatrzymaną, jeśli odtworzenie się nie powiedzie. Narzędzie
-odtwarza wyłącznie bazę, nie pliki `media/`; nie tworzy nowych kopii zapasowych
-i nie zastępuje kopii offsite.
+czyta poświadczenia właściciela z `migration.env`, weryfikuje HMAC, pyta o klucze
+i wymaga jawnego potwierdzenia przed nadpisaniem lokalnej bazy produkcyjnej.
+`pg_restore` używa roli-właściciela, a migracje wykonuje dedykowane konto
+migracyjne. Narzędzie zatrzymuje usługę sklepu na czas odtworzenia i pozostawia
+ją zatrzymaną, jeśli odtworzenie się nie powiedzie. Odtwarza wyłącznie bazę, nie
+pliki `media/`; nie tworzy nowych kopii zapasowych i nie zastępuje kopii offsite.
 
 ```bash
 sudo /opt/sklepzdoniczkami/.venv/bin/python \

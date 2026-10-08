@@ -239,13 +239,57 @@ class ProductionPreviewCatalogCommandTests(TestCase):
         database.settings_dict = {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
-            "USER": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
             "HOST": "127.0.0.1",
             "PORT": "5432",
             "OPTIONS": options or {},
         }
         database.cursor.return_value.__enter__.return_value = cursor
         return database, cursor
+
+    def test_database_validation_accepts_restricted_runtime_user(self):
+        database, cursor = self.production_database_connection()
+        cursor.fetchone.side_effect = [
+            (
+                "sklepzdoniczkami_prod",
+                "sklepzdoniczkami_prod_web_limited",
+                "public",
+            ),
+            (False, False, False, False, False, False, False, False),
+        ]
+        with patch(
+            "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+            {"default": database},
+        ):
+            SeedProductionPreviewCatalogCommand.validate_production_database()
+
+    def test_database_validation_rejects_runtime_user_with_elevated_privileges(self):
+        privileged_results = (
+            (True, False, False, False, False, False, False, False),
+            (False, True, False, False, False, False, False, False),
+            (False, False, False, False, False, False, False, True),
+        )
+        for privileges in privileged_results:
+            with self.subTest(privileges=privileges):
+                database, cursor = self.production_database_connection()
+                cursor.fetchone.side_effect = [
+                    (
+                        "sklepzdoniczkami_prod",
+                        "sklepzdoniczkami_prod_web_limited",
+                        "public",
+                    ),
+                    privileges,
+                ]
+                with (
+                    patch(
+                        "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
+                        {"default": database},
+                    ),
+                    self.assertRaisesMessage(
+                        CommandError, "excessive database privileges"
+                    ),
+                ):
+                    SeedProductionPreviewCatalogCommand.validate_production_database()
 
     def test_database_validation_rejects_connection_routing_override(self):
         database, _ = self.production_database_connection(
@@ -274,9 +318,9 @@ class ProductionPreviewCatalogCommandTests(TestCase):
         ):
             SeedProductionPreviewCatalogCommand.validate_production_database()
 
-    def test_database_validation_rejects_wrong_database_user(self):
+    def test_database_validation_rejects_database_owner_user(self):
         database, cursor = self.production_database_connection()
-        database.settings_dict["USER"] = "postgres"
+        database.settings_dict["USER"] = "sklepzdoniczkami_prod"
         with (
             patch(
                 "sklepzdoniczkami.management.commands.seed_production_preview_catalog.connections",
@@ -685,7 +729,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
         production_database = {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
-            "USER": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
             "HOST": "127.0.0.1",
             "PASSWORD": "not-a-real-secret",
             "PORT": "5432",
@@ -714,7 +758,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
         production_database = {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
-            "USER": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
             "HOST": "127.0.0.1",
             "PASSWORD": "not-a-real-secret",
             "PORT": "5432",
@@ -743,7 +787,7 @@ class FirstAdminBootstrapCommandTests(TestCase):
         production_database = {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
-            "USER": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
             "HOST": "127.0.0.1",
             "PASSWORD": "not-a-real-secret",
             "PORT": "6543",
@@ -773,14 +817,14 @@ class FirstAdminBootstrapCommandTests(TestCase):
         database.settings_dict = {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "sklepzdoniczkami_prod",
-            "USER": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
             "HOST": "127.0.0.1",
             "OPTIONS": {},
         }
         cursor = database.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = (
             "sklepzdoniczkami_prod",
-            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
             "unexpected_schema",
         )
 
@@ -790,6 +834,47 @@ class FirstAdminBootstrapCommandTests(TestCase):
             connection_handler.__getitem__.return_value = database
             with self.assertRaisesMessage(
                 CommandError, "does not match the production target"
+            ):
+                BootstrapFirstAdminCommand().validate_production_database()
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_accepts_restricted_runtime_user(self):
+        database = MagicMock()
+        database.settings_dict = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod_web_limited",
+            "HOST": "127.0.0.1",
+            "PORT": "5432",
+            "OPTIONS": {},
+        }
+        cursor = database.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (
+            "sklepzdoniczkami_prod",
+            "sklepzdoniczkami_prod_web_limited",
+            "public",
+        )
+
+        with patch(
+            "sklepzdoniczkami.management.commands.bootstrap_first_admin.connections"
+        ) as connection_handler:
+            connection_handler.__getitem__.return_value = database
+            BootstrapFirstAdminCommand().validate_production_database()
+
+    @override_settings(APP_ENV="production")
+    def test_bootstrap_rejects_database_owner_connection(self):
+        production_database = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "sklepzdoniczkami_prod",
+            "USER": "sklepzdoniczkami_prod",
+            "HOST": "127.0.0.1",
+            "PASSWORD": "not-a-real-secret",
+            "PORT": "5432",
+            "OPTIONS": {},
+        }
+        with override_settings(DATABASES={"default": production_database}):
+            with self.assertRaisesMessage(
+                CommandError, "outside the pinned production database"
             ):
                 BootstrapFirstAdminCommand().validate_production_database()
 

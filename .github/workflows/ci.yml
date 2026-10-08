@@ -27,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check Ubuntu installer syntax
+        run: bash -n scripts/setup_ubuntu_selfhost.sh
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
