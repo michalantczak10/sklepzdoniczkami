@@ -1,0 +1,36 @@
+[Unit]
+Description=Encrypted offsite backup of Sklepzdoniczkami production data
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/sklepzdoniczkami-backup/current
+EnvironmentFile=/etc/sklepzdoniczkami/backup.env
+Environment=SKLEP_BACKUP_ENV_FILE=/etc/sklepzdoniczkami/backup.env
+Environment=DJANGO_ENV_FILE=/etc/sklepzdoniczkami/app.env
+Environment=HOME=/root
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+Environment=PYTHONPATH=/opt/sklepzdoniczkami-backup/current
+ExecStart=/opt/sklepzdoniczkami/.venv/bin/python /opt/sklepzdoniczkami-backup/current/scripts/backup_ovh.py
+TimeoutStartSec=6h
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/opt/sklepzdoniczkami /opt/sklepzdoniczkami-backup /etc/sklepzdoniczkami/app.env /etc/sklepzdoniczkami/migration.env /var/lib/sklepzdoniczkami-production/media
+ReadWritePaths=/var/cache/sklepzdoniczkami-restic
+
+[Install]
+WantedBy=multi-user.target
