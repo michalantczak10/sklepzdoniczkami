@@ -55,25 +55,24 @@ oczekuje nagłówka od reverse proxy. Ciasteczka pozostają secure przy `DEBUG=F
 
 ### Zasada PR i merge
 
-Każda zmiana trafia do `dev` lub `main` wyłącznie przez pull request. PR wymaga
-dwóch zatwierdzeń od osób innych niż autor, pozytywnych wymaganych kontroli CI
-oraz rozwiązania wszystkich wątków przeglądu. Nowy commit po zatwierdzeniu
-unieważnia wcześniejsze review; po aktualizacji PR ponownie zbiera oba
-zatwierdzenia. Nie omijaj zabezpieczeń także jako administrator, nie wypychaj
-bezpośrednio do chronionych branchy i nie używaj force-pusha. Scalaj dopiero po
-spełnieniu wszystkich warunków ochrony gałęzi.
+Każda zmiana trafia do `dev` lub `main` wyłącznie przez pull request. GitHub
+wymaga pozytywnych kontroli CI i rozwiązania wszystkich wątków review; bezpośredni
+push oraz force-push są zablokowane, także dla administratorów. Przed scaleniem
+autor zleca dwa niezależne przeglądy subagentom AI i scala dopiero po ich
+akceptacji oraz przejściu CI. Te przeglądy są procedurą zespołu, a nie approvals
+rejestrowanymi ani egzekwowanymi przez GitHub.
 
 1. Twórz branch `feature/...` z aktualnego `dev`, pracuj lokalnie i otwieraj PR
-   do `dev`. Po dwóch review i przejściu GitHub Actions (Django check, testy
-   Django i testy E2E) scalaj przez squash merge. CI uruchamia się na
+   do `dev`. Po dwóch niezależnych review AI i przejściu GitHub Actions (Django
+   check, testy Django i testy E2E) scalaj przez squash merge. CI uruchamia się na
    GitHub-hosted runners, używa SQLite i nie wdraża aplikacji ani nie łączy się
    z bazami OVH.
 2. Wdrażaj `dev` wyłącznie do usługi development i bazy
    `sklepzdoniczkami_dev`. Testuj tam funkcjonalność oraz przykładowe dane.
-3. Po akceptacji otwieraj PR `dev` -> `main`. Po scaleniu wybierz konkretny
+3. Po akceptacji otwieraj PR `dev` -> `main`. Po dwóch niezależnych review AI
+   i przejściu wymaganych kontroli scalaj PR. Po scaleniu wybierz konkretny
    commit `main`, wdrażaj go najpierw do preprod z bazą
-   `sklepzdoniczkami_preprod` i wykonaj testy akceptacyjne. Ten PR także wymaga
-   dwóch review i przejścia wymaganych kontroli.
+   `sklepzdoniczkami_preprod` i wykonaj testy akceptacyjne.
 4. Po akceptacji preprod wdrażaj **ten sam commit** na produkcję. Nie wdrażaj
    produkcji bez sprawdzenia migracji i aktualnej, przetestowanej kopii bazy.
    Wdrożenia są ręczne; GitHub Actions nie ma sekretów SSH i nie uruchamia

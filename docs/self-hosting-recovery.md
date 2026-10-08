@@ -27,6 +27,40 @@ systemd są rozdzielone. Systemd ogranicza dostęp procesu m.in. przez
 `ProtectSystem`, `ProtectHome`, `PrivateTmp`, `NoNewPrivileges` i osobne
 `StateDirectory`.
 
+## Certyfikaty TLS dla dev i preprod
+
+Jednostki dev/preprod terminują TLS bezpośrednio w Gunicornie. Każde środowisko
+potrzebuje własnego certyfikatu self-signed dla `localhost` i prywatnego klucza;
+nie commituj tych plików ani nie współdziel kluczy między usługami. Utwórz je
+na VPS przed pierwszym uruchomieniem lub odtworzeniem usług:
+
+```bash
+sudo install -d -o root -g root -m 0711 /etc/sklepzdoniczkami
+sudo install -d -o root -g root -m 0711 /etc/sklepzdoniczkami/tls
+
+sudo openssl req -x509 -newkey rsa:3072 -sha256 -days 365 -nodes \
+  -keyout /etc/sklepzdoniczkami/tls/development.key \
+  -out /etc/sklepzdoniczkami/tls/development.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+sudo chown root:sklepzdoniczkami-development /etc/sklepzdoniczkami/tls/development.key
+sudo chmod 0640 /etc/sklepzdoniczkami/tls/development.key
+sudo chmod 0644 /etc/sklepzdoniczkami/tls/development.crt
+
+sudo openssl req -x509 -newkey rsa:3072 -sha256 -days 365 -nodes \
+  -keyout /etc/sklepzdoniczkami/tls/preprod.key \
+  -out /etc/sklepzdoniczkami/tls/preprod.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+sudo chown root:sklepzdoniczkami-preprod /etc/sklepzdoniczkami/tls/preprod.key
+sudo chmod 0640 /etc/sklepzdoniczkami/tls/preprod.key
+sudo chmod 0644 /etc/sklepzdoniczkami/tls/preprod.crt
+```
+
+Certyfikaty wygasają po roku; przed wygaśnięciem wygeneruj nową parę dla
+odpowiedniego środowiska i zrestartuj tylko jego usługę. Ostrzeżenie przeglądarki
+jest oczekiwane dla self-signed `localhost`; używaj tunelu SSH i kont testowych.
+
 **Stan branchy wymaga naprawy przed kolejnym wdrożeniem:** `dev` (`65522f2`)
 zawiera jeszcze ustawienia Render/Neon i jest rozbieżny z `main` (`da455da`).
 Nie wdrażaj go. Zsynchronizuj `main` do `dev` przez PR, rozwiąż konflikty,
