@@ -63,16 +63,17 @@ Branche `feature/...`, `fix/...` i `chore/...` są krótkotrwałe i po PR powinn
 znikać. GitHub usuwa branche PR automatycznie po scaleniu.
 
 Ochrona `dev` i `main` wymaga przejścia `Django tests`, `End-to-end tests
-(Playwright)` oraz rozwiązania wątków review; bezpośredni push i force-push są
-zablokowane, także dla administratorów. Wymagane approvals wynoszą `0`, więc
-żaden człowiek nie musi zatwierdzać PR-a. Dwa niezależne przeglądy AI mogą być
-użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje ich jako warunku merge.
+(Playwright)`, `PostgreSQL tests` oraz rozwiązania wątków review; bezpośredni
+push i force-push są zablokowane, także dla administratorów. Wymagane approvals
+wynoszą `0`, więc żaden człowiek nie musi zatwierdzać PR-a. Dwa niezależne
+przeglądy AI mogą być użyte jako dodatkowa kontrola, ale GitHub nie egzekwuje
+ich jako warunku merge.
 
 1. Zaczynaj `feature/...`, `fix/...` lub `chore/...` od aktualnego `dev`.
-   Otwórz PR do `dev`; poczekaj na oba wymagane checki i rozwiąż wszystkie
+   Otwórz PR do `dev`; poczekaj na wszystkie wymagane checki i rozwiąż wszystkie
    wątki. Dla zwykłych zmian scalaj przez squash, aby historia `dev` była
-   czytelna. CI uruchamia testy na GitHub-hosted runners z SQLite i nie wdraża
-   aplikacji ani nie łączy się z bazami OVH.
+   czytelna. CI uruchamia testy na GitHub-hosted runners z SQLite i PostgreSQL,
+   nie wdraża aplikacji ani nie łączy się z bazami OVH.
 2. Po merge wdrażaj pełny SHA `origin/dev` wyłącznie na development:
    ```powershell
    git fetch --prune origin
