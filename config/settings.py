@@ -20,17 +20,15 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-APP_ENV_FROM_ENV = os.environ.get('APP_ENV')
-load_dotenv(BASE_DIR / '.env')
+DOTENV_PATH = Path(os.environ.get('DJANGO_ENV_FILE', BASE_DIR / '.env'))
+load_dotenv(DOTENV_PATH, override=bool(os.environ.get('DJANGO_ENV_FILE')))
 
 def env_value(name, default=None):
     return os.environ.get(f'{name}_{ENV_SUFFIX}', default)
 
 
-def resolve_app_env(app_env: str | None, *, is_render: bool) -> str:
+def resolve_app_env(app_env: str | None) -> str:
     if not app_env or not app_env.strip():
-        if is_render:
-            raise ImproperlyConfigured('APP_ENV must be explicitly configured on Render.')
         app_env = 'development'
 
     resolved_app_env = app_env.strip().lower()
@@ -39,43 +37,41 @@ def resolve_app_env(app_env: str | None, *, is_render: bool) -> str:
     return resolved_app_env
 
 
-IS_RENDER = any(
-    os.environ.get(name) for name in ('RENDER', 'RENDER_SERVICE_ID', 'RENDER_EXTERNAL_URL')
-)
-APP_ENV = resolve_app_env(
-    APP_ENV_FROM_ENV if IS_RENDER else os.environ.get('APP_ENV'),
-    is_render=IS_RENDER,
-)
+def resolve_secure_ssl_redirect(app_env: str, configured_value: str) -> bool:
+    return app_env == 'production' and configured_value == 'True'
+
+
+APP_ENV = resolve_app_env(os.environ.get('APP_ENV'))
 ENV_SUFFIX = APP_ENV.upper()
+IS_TEST_SETTINGS = os.environ.get('DJANGO_SETTINGS_MODULE') == 'config.settings_test'
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env_value(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-ew3ox9x+(5*j2p5p9sbdk=y4%bc%g1x%ld)-mf#nwv^s%+@wce',
-)
+SECRET_KEY = env_value('DJANGO_SECRET_KEY')
+if IS_TEST_SETTINGS and not SECRET_KEY:
+    SECRET_KEY = 'django-insecure-internal-test-key'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',') if os.environ.get('ALLOWED_HOSTS') else ['*']
-if APP_ENV in {'preprod', 'production'}:
+if not IS_TEST_SETTINGS:
     if not env_value('DATABASE_URL'):
         raise ImproperlyConfigured(f'DATABASE_URL_{ENV_SUFFIX} is required.')
     if not env_value('DJANGO_SECRET_KEY'):
         raise ImproperlyConfigured(f'DJANGO_SECRET_KEY_{ENV_SUFFIX} is required.')
-    if DEBUG:
-        raise ImproperlyConfigured(f'DEBUG must be False when APP_ENV={APP_ENV}.')
     if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
         raise ImproperlyConfigured(f'ALLOWED_HOSTS must be explicitly configured when APP_ENV={APP_ENV}.')
+    if APP_ENV in {'preprod', 'production'} and DEBUG:
+        raise ImproperlyConfigured(f'DEBUG must be False when APP_ENV={APP_ENV}.')
 
 if env_value('DATABASE_URL'):
     actual_database_name = dj_database_url.parse(env_value('DATABASE_URL'))['NAME']
     expected_database_name = env_value('DATABASE_NAME')
-    if APP_ENV in {'preprod', 'production'} and not expected_database_name:
+    if not expected_database_name and not IS_TEST_SETTINGS:
         raise ImproperlyConfigured(
             f'DATABASE_NAME_{ENV_SUFFIX} is required when DATABASE_URL_{ENV_SUFFIX} is set.'
         )
@@ -90,18 +86,25 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
 ).split(',')
 
 SITE_NAME = os.environ.get('SITE_NAME', 'Sklepzdoniczkami')
+SITE_URL = os.environ.get(
+    'SITE_URL', 'https://sklepzdoniczkami.pl'
+).rstrip('/')
+SEO_INDEXING_ENABLED = APP_ENV == 'production'
 
-# When running behind Render's proxy, requests arrive over HTTP internally but
-# were made over HTTPS by the client. This header tells Django to trust that.
+# The reverse proxy forwards the original HTTPS protocol to Django.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True') == 'True'
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+SECURE_SSL_REDIRECT = resolve_secure_ssl_redirect(
+    APP_ENV, os.environ.get('SECURE_SSL_REDIRECT', 'True')
+)
+
 
 def validate_stripe_configuration(app_env, secret_key, public_key, webhook_secret):
     secret_key, public_key, webhook_secret = (
@@ -189,6 +192,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'config.context_processors.seo_globals',
             ],
         },
     },
@@ -206,7 +210,7 @@ LOGOUT_REDIRECT_URL = 'sklepzdoniczkami:home'
 DATABASES = {
     'default': dj_database_url.config(
         env=f'DATABASE_URL_{ENV_SUFFIX}',
-        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        default='sqlite:///:memory:',
         conn_max_age=600,
     )
 }
@@ -251,23 +255,38 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media (user-uploaded files)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', BASE_DIR / 'media'))
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-EMAIL_BACKEND = os.environ.get(
-    'EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
-)
 EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '10'))
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@sklepzdoniczkami.pl')
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND',
+    (
+        'django.core.mail.backends.smtp.EmailBackend'
+        if APP_ENV == 'production' and EMAIL_HOST
+        else 'django.core.mail.backends.console.EmailBackend'
+    ),
+)
+PASSWORD_RESET_EMAIL_CONFIGURED = all(
+    (
+        EMAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend',
+        EMAIL_HOST,
+        EMAIL_HOST_USER,
+        EMAIL_HOST_PASSWORD,
+    )
+)
+ADMIN_PASSWORD_RESET_EMAIL_CONFIGURED = PASSWORD_RESET_EMAIL_CONFIGURED

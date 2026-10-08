@@ -1,17 +1,31 @@
 {% extends 'sklepzdoniczkami/base.html' %}
 
 {% block title %}Logowanie{% endblock %}
+{% block robots_meta %}<meta name="robots" content="noindex,nofollow">{% endblock %}
 
 {% block content %}
-    <h1>Zaloguj się</h1>
-    <div class="card" style="max-width: 420px;">
-        <form method="post">
-            {% csrf_token %}
-            {{ form.as_p }}
-            <div class="actions">
-                <button class="btn" type="submit">Zaloguj</button>
-            </div>
-        </form>
-        <p>Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
+    <div class="container content-page account-page">
+        <div class="card account-card">
+            <span class="eyebrow">Witaj ponownie</span>
+            <h1>Zaloguj się</h1>
+            <form method="post">
+                {% csrf_token %}
+                {{ form.non_field_errors }}
+                {% for field in form %}
+                    <div class="form-field account-form-field">
+                        {{ field.label_tag }}
+                        {{ field }}
+                        {% for error in field.errors %}
+                            <small class="form-error">{{ error }}</small>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+                <div class="actions">
+                    <button class="btn" type="submit">Zaloguj się</button>
+                </div>
+            </form>
+            <p class="account-switch"><a href="{% url 'sklepzdoniczkami:password_reset' %}">Nie pamiętasz hasła?</a></p>
+            <p class="account-switch">Nie masz konta? <a href="{% url 'sklepzdoniczkami:register' %}">Zarejestruj się</a></p>
+        </div>
     </div>
 {% endblock %}

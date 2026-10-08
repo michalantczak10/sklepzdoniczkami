@@ -9,21 +9,24 @@ from sklepzdoniczkami.models import Category, Order, Product
 
 @pytest.fixture
 def product(db):
-    category = Category.objects.create(name="Rosliny", slug="rosliny")
+    category, _ = Category.objects.get_or_create(
+        slug="doniczki",
+        defaults={"name": "Doniczki"},
+    )
     product = Product.objects.create(
         category=category,
-        name="Monstera testowa",
-        slug="monstera-testowa",
-        description="Produkt utworzony na potrzeby testu E2E.",
+        name="Doniczka ceramiczna testowa",
+        slug="doniczka-ceramiczna-testowa",
+        description="Doniczka utworzona na potrzeby testu E2E.",
         price="49.99",
         stock=5,
         is_active=True,
     )
     Product.objects.create(
         category=category,
-        name="Fikus testowy",
-        slug="fikus-testowy",
-        description="Produkt spoza wyszukiwania w teście E2E.",
+        name="Doniczka plastikowa testowa",
+        slug="doniczka-plastikowa-testowa",
+        description="Doniczka spoza wyszukiwania w teście E2E.",
         price="39.99",
         stock=5,
         is_active=True,
@@ -38,12 +41,12 @@ def test_guest_can_add_product_to_cart(live_server, page: Page, product):
 
     expect(page.get_by_role("heading", name="Wszystkie produkty")).to_be_visible()
     expect(page.get_by_text(product.name)).to_be_visible()
-    expect(page.get_by_text("Fikus testowy")).to_be_visible()
+    expect(page.get_by_text("Doniczka plastikowa testowa")).to_be_visible()
 
-    page.get_by_placeholder("Szukaj produktu...").fill("Monstera")
+    page.get_by_placeholder("Szukaj produktu...").fill("ceramiczna")
     page.get_by_placeholder("Szukaj produktu...").press("Enter")
     expect(page.get_by_text(product.name)).to_be_visible()
-    expect(page.get_by_text("Fikus testowy")).not_to_be_visible()
+    expect(page.get_by_text("Doniczka plastikowa testowa")).not_to_be_visible()
 
     product_card = page.locator("article.product-card").filter(has_text=product.name)
     product_card.get_by_role("button", name="Dodaj do koszyka").click()
@@ -79,3 +82,34 @@ def test_guest_can_submit_transfer_order(live_server, page: Page, product):
     expect(page.get_by_text("Metoda płatności: Przelew bankowy")).to_be_visible()
     order = Order.objects.get(email="anna-e2e@example.com")
     assert order.payment_method == "transfer"
+
+
+@pytest.mark.e2e
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("viewport_width", [320, 375, 768, 1280])
+def test_storefront_pages_fit_mobile_tablet_and_desktop(
+    live_server, page: Page, product, viewport_width
+):
+    page.set_viewport_size({"width": viewport_width, "height": 900})
+    page.goto(live_server.url + reverse("sklepzdoniczkami:home"))
+    if viewport_width <= 380:
+        assert page.locator(".product-grid").evaluate(
+            "element => getComputedStyle(element).gridTemplateColumns.split(' ').length"
+        ) == 1
+    page.locator("article.product-card").filter(has_text=product.name).get_by_role(
+        "button", name="Dodaj do koszyka"
+    ).click()
+
+    page_urls = (
+        reverse("sklepzdoniczkami:home"),
+        reverse("sklepzdoniczkami:products"),
+        reverse("sklepzdoniczkami:login"),
+        product.get_absolute_url(),
+        reverse("sklepzdoniczkami:cart"),
+        reverse("sklepzdoniczkami:checkout"),
+    )
+    for path in page_urls:
+        page.goto(live_server.url + path)
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth"
+        ), f"Horizontal page overflow at {viewport_width}px on {path}"

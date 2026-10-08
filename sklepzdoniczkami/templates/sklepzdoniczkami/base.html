@@ -4,13 +4,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#f7f6f0">
-    <title>{% block title %}Sklep z doniczkami{% endblock %}</title>
     {% load static %}
+    <title>{% block title %}Doniczki do domu, na balkon i taras | Sklepzdoniczkami{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Odkryj doniczki do domu, na balkon i taras. Wybierz spośród ceramicznych, plastikowych i cementowych form.{% endblock %}">
+    {% block robots_meta %}<meta name="robots" content="{% if seo_indexing_enabled %}index,follow{% else %}noindex,nofollow{% endif %}">{% endblock %}
+    <link rel="canonical" href="{% block canonical_url %}{{ site_url }}/{% endblock %}">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:site_name" content="Sklepzdoniczkami">
+    <meta property="og:locale" content="pl_PL">
+    <meta property="og:title" content="{% block og_title %}Doniczki do domu, na balkon i taras | Sklepzdoniczkami{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Odkryj doniczki do domu, na balkon i taras.{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}{{ site_url }}/{% endblock %}">
+    <meta property="og:image" content="{{ site_url }}{% static 'sklepzdoniczkami/img/products/pot-terracotta-3.jpg' %}">
+    <meta property="og:image:alt" content="Doniczki do domowego wnętrza">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" href="{% static 'sklepzdoniczkami/img/favicon.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'sklepzdoniczkami/css/store.css' %}">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Sklepzdoniczkami",
+            "url": "{{ site_url }}/",
+            "inLanguage": "pl-PL",
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": "{{ site_url }}{% url 'sklepzdoniczkami:products' %}?q={search_term_string}",
+                "query-input": "required name=search_term_string"
+            }
+        }
+    </script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Przejdź do treści</a>
-    <div class="announcement">Starannie wybrane doniczki do domu, na balkon i taras</div>
+    <div class="announcement">Zieleń, która dobrze czuje się w Twoim domu</div>
     <header class="topbar">
         <div class="container nav">
             <a class="brand" href="{% url 'sklepzdoniczkami:home' %}">
@@ -52,7 +79,7 @@
     <footer class="site-footer">
         <div class="container footer-inner">
             <a class="brand footer-brand" href="{% url 'sklepzdoniczkami:home' %}"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M20 31V17m0 7c-8 0-12-5-12-13 8 0 12 4 12 11m0-3c0-8 4-12 12-12 0 8-4 12-12 12" /></svg></span><span>sklep<span class="brand-light">zdoniczkami</span></span></a>
-            <p>Doniczki, które podkreślają charakter Twojej przestrzeni.</p>
+            <p>Doniczki do domu, na balkon i taras.</p>
             <span>© {% now "Y" %} Sklep z doniczkami</span>
         </div>
     </footer>

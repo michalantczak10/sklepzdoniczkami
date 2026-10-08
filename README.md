@@ -3,138 +3,159 @@
 Sklep internetowy oparty na Django: katalog produktów, koszyk, zamówienia,
 płatności Stripe, konta klientów i panel administratora.
 
-## Uruchomienie lokalne
+## Środowiska
 
-Wymagany jest Python 3.12 lub nowszy.
+Wszystkie uruchomione środowiska aplikacji i bazy danych znajdują się na VPS
+OVH. Komputer developerski służy do edycji kodu i opcjonalnego uruchamiania
+testów; nie hostuje sklepu ani jego baz.
+
+| Środowisko | Baza i rola PostgreSQL | Usługa | Dostęp |
+| --- | --- | --- | --- |
+| Development | `sklepzdoniczkami_dev` | `sklepzdoniczkami-development.service` | SSH tunnel, port loopback 8001 |
+| Preprod | `sklepzdoniczkami_preprod` | `sklepzdoniczkami-preprod.service` | SSH tunnel, port loopback 8002 |
+| Produkcja | `sklepzdoniczkami_prod` | `sklepzdoniczkami.service` | Caddy, `https://sklepzdoniczkami.pl` |
+
+Produkcyjna baza nie zawiera przykładowego katalogu, zamówień ani klientów;
+nie seeduj do niej danych developerskich.
+
+Usługi development i preprod oraz PostgreSQL nie są wystawione publicznie.
+Łącz się do nich z Windows przez tunel SSH:
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
+ssh -N -i "$HOME\.ssh\sklep-vps" `
+  -L 8001:127.0.0.1:8001 `
+  -L 8002:127.0.0.1:8002 `
+  ubuntu@141.94.224.49
 ```
 
-Docker nie jest potrzebny do developmentu. Bez `DATABASE_URL_DEVELOPMENT`
-Django używa lokalnego SQLite; aby aplikacja łączyła się ze wspólną bazą Neon
-dev, ustaw tę zmienną w niecommitowanym `.env` na dedykowany URL roli
-`sklepzdoniczkami_dev_web`. Nie używaj testowego URL-a z uprawnieniem
-`CREATEDB` ani credentiali ownera jako połączenia aplikacji. Uzupełnij pozostałe
-zmienne z sufiksem `_DEVELOPMENT`, a następnie uruchom:
+Pozostaw to okno otwarte i otwórz `https://localhost:8001/` (development)
+lub `https://localhost:8002/` (preprod). W drugim oknie PowerShell możesz
+sprawdzić samą odpowiedź HTTP:
 
 ```powershell
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
+curl.exe -k -sS -o NUL -w "dev HTTP %{http_code}`n" https://localhost:8001/
+curl.exe -k -sS -o NUL -w "preprod HTTP %{http_code}`n" https://localhost:8002/
 ```
 
-Polecenie `migrate` w powyższym przykładzie dotyczy lokalnego SQLite.
-Rola aplikacyjna Neon ma celowo tylko prawa DML i nie może zmieniać schematu;
-testy CI wykonują migracje na osobnej, tymczasowej bazie PostgreSQL. Nie
-uruchamiaj migracji na wspólnej bazie Neon przez URL aplikacyjny.
+Oczekiwany status to `200`. Opcja `-k` służy tu wyłącznie do sprawdzenia
+dostępności przez tunel SSH; nie używaj jej do logowania ani przesyłania
+poufnych danych. Certyfikat localhost jest self-signed, więc przeglądarka może
+pokazać ostrzeżenie. Używaj wyłącznie kont testowych; nie wpisuj haseł
+produkcyjnych ani danych płatniczych. Nie otwieraj portu PostgreSQL ani portów
+Django w firewallu.
 
-Sklep będzie dostępny pod `http://127.0.0.1:8000/`, a panel administratora pod
-`http://127.0.0.1:8000/admin/`. Domyślnie aplikacja używa SQLite; PostgreSQL
-można skonfigurować przez `DATABASE_URL_DEVELOPMENT`. Klucze testowe Stripe
-pochodzą z panelu Stripe i nie należy ich commitować.
+Każda usługa ma osobny checkout i `.venv` pod `/opt`, odrębne konto systemowe
+bez logowania, katalog mediów pod `/var/lib` oraz własny plik środowiskowy.
+Uruchomiony proces development nie może czytać sekretów preprod ani produkcji.
+Dev i preprod kończą TLS bezpośrednio w Gunicornie i są dostępne tylko przez
+tunel SSH; ich jednostki systemd wyłączają przekierowanie HTTPS Django, które
+oczekuje nagłówka od reverse proxy. Ciasteczka pozostają secure przy `DEBUG=False`.
+
+## Praca na branchach i promocja wydań
+
+### Zasada PR i merge
+
+Każda zmiana trafia do `dev` lub `main` wyłącznie przez pull request. GitHub
+wymaga pozytywnych kontroli CI i rozwiązania wszystkich wątków review; bezpośredni
+push oraz force-push są zablokowane, także dla administratorów. Przed scaleniem
+autor zleca dwa niezależne przeglądy subagentom AI i scala dopiero po ich
+akceptacji oraz przejściu CI. Te przeglądy są procedurą zespołu, a nie approvals
+rejestrowanymi ani egzekwowanymi przez GitHub.
+
+1. Twórz branch `feature/...` z aktualnego `dev`, pracuj lokalnie i otwieraj PR
+   do `dev`. Po dwóch niezależnych review AI i przejściu GitHub Actions (Django
+   check, testy Django i testy E2E) scalaj przez squash merge. CI uruchamia się na
+   GitHub-hosted runners, używa SQLite i nie wdraża aplikacji ani nie łączy się
+   z bazami OVH.
+2. Po scaleniu PR pobierz aktualny `dev` i wdrażaj jego pełny SHA wyłącznie do
+   developmentu. Z katalogu repozytorium uruchom:
+   ```powershell
+   git fetch origin
+   $sha = (git rev-parse origin/dev).Trim()
+   .\scripts\deploy_ovh.ps1 -Environment development -Commit $sha
+   ```
+   Skrypt przed połączeniem sprawdza, że commit należy do właściwej gałęzi i że
+   wymagane checki Django oraz Playwright zakończyły się sukcesem.
+3. Po testach akceptacyjnych otwieraj PR `dev` -> `main`. Po scaleniu wybierz
+   pełny SHA z `main` i wdrażaj go najpierw na preprod:
+   ```powershell
+   git fetch origin
+   $sha = (git rev-parse origin/main).Trim()
+   .\scripts/deploy_ovh.ps1 -Environment preprod -Commit $sha
+   ```
+4. Po akceptacji preprod wdrażaj **ten sam SHA** na produkcję:
+   ```powershell
+   .\scripts/deploy_ovh.ps1 -Environment production -Commit $sha
+   ```
+   Skrypt blokuje produkcję, jeśli ten sam SHA nie przeszedł wcześniej
+   wdrożenia i testów health-check na preprod albo nie ma root-owned znacznika
+   potwierdzającego zweryfikowaną kopię bazy i mediów poza VPS.
+
+Jeśli `dev` i `main` się rozjadą, najpierw otwórz PR synchronizujący `main` do
+`dev`, rozwiąż konflikty i poczekaj na wymagane CI. Do czasu jego scalenia nie
+wdrażaj `dev`. Nie używaj force-push ani resetu branchy. Skrypt wdrożeniowy
+korzysta z lokalnego SSH i GitHub CLI; klucz SSH nie jest przekazywany do
+GitHub Actions.
+
+Zmiany schematu dodawaj jako migracje Django w tym samym PR co kod. Uruchamiaj
+migracje osobno i wyłącznie dla docelowego środowiska. Dane developerskie,
+konta, zamówienia i stany magazynowe nie są kopiowane między bazami. Komenda
+`load_sample_products` jest przeznaczona wyłącznie dla developmentu; nie
+uruchamiaj jej w preprod ani produkcji. Produkcja nie ma być automatycznie
+zasilana zawartością dev.
 
 ## Testy
 
-Testy Django:
-
 ```powershell
-python manage.py test sklepzdoniczkami
+python -m pip install -r requirements.txt -r requirements-dev.txt
+pytest -q --ds=config.settings_test
+pytest e2e -m e2e --browser chromium --browser-channel msedge --ds=config.settings_test
 ```
 
-Testy CI i przeglądarkowe wymagają zależności z `requirements-dev.txt`:
+Testy używają odizolowanej bazy SQLite in-memory. Na Windows wymagają
+zainstalowanego Microsoft Edge; alternatywnie pobierz przeglądarkę poleceniem
+`playwright install chromium` i usuń `--browser-channel msedge`. Nie uruchamiaj
+lokalnego `runserver`, PostgreSQL, kontenerów ani kopii produkcji; przeglądaj
+dev/preprod przez SSH tunnel. Konfigurację środowisk na VPS przechowują prywatne pliki
+`/etc/sklepzdoniczkami/{development.env,preprod.env,app.env}` poza repozytorium.
+Nie wyświetlaj ani nie kopiuj ich sekretów do logów, GitHub Actions lub Git.
 
-```powershell
-pip install -r requirements-dev.txt
-playwright install chromium
-pytest -q
-pytest e2e --tracing=retain-on-failure --screenshot=only-on-failure
-```
+## Katalog przykładowy i grafiki
 
-## GitHub Actions
+Development seed tworzy trzy kategorie oraz osiem powtarzalnie aktualizowanych
+produktów z przykładowymi cenami i stanami: dwa betonowe, dwa drewniane i cztery
+plastikowe (w tym dwa wcześniejsze przykłady). Grafiki SVG w
+`sklepzdoniczkami/static/sklepzdoniczkami/img/` są oryginalnymi ilustracjami,
+nie zdjęciami ani potwierdzeniem specyfikacji towaru. Zweryfikuj rzeczywisty
+produkt, cenę, stan i zdjęcie przed publikacją w produkcji.
 
-- `ci.yml` uruchamia kontrole Django, testy i testy przeglądarkowe dla pull
-  requestów do `main`/`dev` oraz zmian na tych branchach. Testy Django używają
-  Neon dev i osobnej, tworzonej dla danego uruchomienia bazy testowej; job
-  sprząta ją również po nieudanym teście.
-- `db-backup.yml` tworzy codzienny lub ręcznie wywołany zaszyfrowany backup.
-  Artefakty są przechowywane przez 90 dni. Docker jest używany wyłącznie na
-  runnerze GitHub Actions do uruchomienia `pg_dump`; nie jest wymagany lokalnie.
+## Audyt plików i konfiguracji
 
-## Oddzielne środowiska i bazy danych
+- Zachowano Django, migracje, CI, konfigurację produkcyjnego Caddy oraz
+  provisioning VPS.
+- Usunięto lokalne profile hostingu Windows/WSL, skrypty modyfikujące `hosts`,
+  lokalny Docker Compose, przykładową lokalną konfigurację bazy i zależność
+  Waitress. Były nieużywane dla OVH, a konfiguracja WSL wcześniej mogła
+  przekierować domenę produkcyjną na lokalny adres.
+- Zachowano stare JPG, ponieważ służą jeszcze za ilustracje strony głównej i
+  nieprodukcyjnego katalogu preview; ich źródła/licencje są w
+  [README_IMAGES.md](README_IMAGES.md).
+- Wartości środowiskowe mają jawne nazwy baz i wymagane klucze dla preprod/prod;
+  statyczne URL-e zaczynają się od `/static/`, by działały także na zagnieżdżonych
+  ścieżkach produktów.
 
-Neon ma trzy odizolowane środowiska:
+## Operacje i odzyskiwanie
 
-| Środowisko | Aplikacja | Baza |
-|---|---|---|
-| Development i CI | Aplikacja lokalna/CI | `sklepzdoniczkami_dev` |
-| Preprod | Render `sklepzdoniczkami-preprod` | `sklepzdoniczkami_preprod` |
-| Produkcja | Render `sklepzdoniczkami` | `sklepzdoniczkami_prod` |
+Runbook VPS, usług, wdrożeń i obecnych ograniczeń odzyskiwania:
+[docs/self-hosting-recovery.md](docs/self-hosting-recovery.md).
 
-Lokalny `.env` może używać dedykowanej roli aplikacyjnej do bazy dev; bez
-`DATABASE_URL_DEVELOPMENT` Django korzysta z SQLite. Produkcyjny URL musi
-wskazywać dokładnie `sklepzdoniczkami_prod`. Baza produkcyjna Neon była pusta
-podczas ostatniej weryfikacji; przed przełączeniem usługi Render potwierdź jej
-aktualny URL i wykonaj backup istniejących danych.
+**Pozostałe ryzyko:** na VPS nie ma skonfigurowanej ani przetestowanej kopii
+zapasowej poza serwerem. Nie przechowuj tam jedynej kopii zamówień ani danych
+klientów; przed sprzedażą skonfiguruj niezależną kopię i przetestuj odtworzenie.
 
-Preprod korzysta z gałęzi Neon `preprod` utworzonej z dev i z odrębnej,
-początkowo pustej bazy. Wypełnia ją wyłącznie idempotentny katalog
-syntetycznych produktów; nie kopiuj do niej backupów ani danych produkcyjnych.
-Rola `sklepzdoniczkami_preprod_web_limited` ma prawa DML, a
-`sklepzdoniczkami_preprod_migrate_limited` jest właścicielem tej bazy i służy
-tylko do migracji. Obie role nie mają uprawnień administratora Neon ani praw
-tworzenia baz lub ról. Render otrzymuje wyłącznie `DATABASE_URL_PREPROD` dla
-ograniczonej roli web. Migracje wykonuje CI po testach i E2E, na push do `dev`,
-korzystając z sekretu `DATABASE_URL_PREPROD_MIGRATE` w GitHub Environment
-`preprod`. URL migracyjny nie może być dostępny procesowi web w Renderze.
-Środowisko GitHub `preprod` ma dodatkowo regułę deployment branch ograniczoną
-do `dev`, więc pull request z innej gałęzi nie otrzyma tego sekretu.
-`sync: false` nie aktualizuje istniejących sekretów przy kolejnej synchronizacji
-Blueprintu.
-
-Zmiany trafiają przez pull request do gałęzi GitHub `dev`; CI uruchamia testy,
-a Render wdraża preprod z `dev` dopiero po przejściu kontroli. Po smoke testach
-preprod promuj sprawdzony kod przez pull request `dev` → `main`. Automatyczne
-wdrożenia produkcji są wyłączone; po scaleniu wdrażaj w Renderze ręcznie commit
-z `main`. Stripe na preprod używa wyłącznie kompletu kluczy testowych; gdy ich
-nie ustawiono, płatność kartą jest wyłączona.
-
-Sekrety aplikacji używają sufiksów `_DEVELOPMENT`, `_PREPROD` lub
-`_PRODUCTION`. Dotyczy to `DATABASE_URL`, `DJANGO_SECRET_KEY` i kluczy Stripe.
-Nazwy baz to `DATABASE_NAME_DEVELOPMENT`, `DATABASE_NAME_PREPROD` i
-`DATABASE_NAME_PRODUCTION`. Ustawienia wspólne, takie jak `APP_ENV`, `DEBUG`,
-`ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` i `SITE_NAME`, pozostają bez sufiksu.
-Produkcja wymaga jawnych URL-i, klucza Django, nazwy bazy, `DEBUG=False` oraz
-`ALLOWED_HOSTS`. Stripe jest wyłączony, jeśli wszystkie klucze są pominięte;
-jeśli są skonfigurowane, muszą być kompletne i pasować do środowiska.
-
-GitHub Actions potrzebuje sekretów:
-
-- `DATABASE_URL_DEVELOPMENT_RO` i `DATABASE_NAME_DEVELOPMENT` do bezpiecznego
-  sprawdzenia dostępu do Neon dev.
-- `DATABASE_URL_DEVELOPMENT_TEST` to dedykowana rola CI z prawem tworzenia
-  bazy testowej; nie używaj jej w aplikacji. CI tworzy osobną nazwę bazy dla
-  każdego uruchomienia i usuwa ją po testach.
-- `DATABASE_URL_PRODUCTION_BACKUP`, `BACKUP_ENCRYPTION_KEY` i
-  `BACKUP_HMAC_KEY` do backupu produkcji. URL backupu używa osobnej roli
-  `sklepzdoniczkami_prod_backup`, a nie poświadczeń aplikacji.
-
-`DATABASE_URL_PREPROD` jest sekretem Rendera. `DATABASE_URL_PREPROD_MIGRATE`
-jest sekretem GitHub Environment `preprod` i trafia wyłącznie do joba migracji
-uruchamianego po zaufanym pushu na `dev`, nigdy do pull-requestów ani procesu
-web. Nie umieszczaj żadnego z tych URL-i w repozytorium.
-
-Nie używaj `DATABASE_URL_DEVELOPMENT_TEST` jako połączenia sklepu ani nie
-kopiuj sekretów production do CI testowego. GitHub nie pozwala odczytać
-wartości istniejących sekretów; rotuj je przez Neon/GitHub, a nie przez
-drukowanie ich w logach.
-
-Nie ma automatycznego workflowu przywracającego produkcyjną bazę na preprod.
-Tym samym dane klientów nie są kopiowane do środowiska przedprodukcyjnego.
-Po utworzeniu nowego serwisu sprawdź w Renderze, czy stary
-`sklepzdoniczkami-staging` już nie jest potrzebny; usuń go wraz z jego zmiennymi
-środowiskowymi dopiero po upewnieniu się, że produkcyjna usługa pozostała
-nienaruszona. Nie używaj jego starej bazy jako nowej bazy preprod.
+**Gotowość sprzedażowa:** ostatni odczyt produkcji wykazał wyłączony Stripe,
+nie skonfigurowany SMTP, zero aktywnych produktów i zero produktów ze stanem
+większym od zera. Odpowiedź strony HTTP 200 potwierdza tylko dostępność
+aplikacji. Nie przyjmuj zamówień, dopóki nie skonfigurujesz płatności live i
+webhooka Stripe, poczty transakcyjnej, rzeczywistego katalogu ze stanami oraz
+zaszyfrowanych kopii bazy i mediów z przetestowanym odtworzeniem.
